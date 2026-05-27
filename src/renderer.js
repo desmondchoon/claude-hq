@@ -30,13 +30,12 @@ let CANVAS_W = 640, CANVAS_H = 480;
 
 // Left agent-roster panel: animated portrait + status + model + directory.
 const SIDEBAR_W = 150;          // CSS px
-const SIDEBAR_MIN_CANVAS = 360; // hide the panel below this window width
+const OFFICE_MIN_CANVAS = 360;  // hide the office below this window width (sidebar always shown)
 let ROSTER_SCROLL = 0;          // vertical scroll offset (px)
-function sidebarVisible() { return CANVAS_W >= SIDEBAR_MIN_CANVAS; }
+function officeVisible() { return CANVAS_W >= OFFICE_MIN_CANVAS; }
 // The office is rendered into this viewport (right of the sidebar).
 function officeViewport() {
-  const sb = sidebarVisible() ? SIDEBAR_W : 0;
-  return { x: sb, y: HEADER_H, w: CANVAS_W - sb, h: CANVAS_H - HEADER_H };
+  return { x: SIDEBAR_W, y: HEADER_H, w: CANVAS_W - SIDEBAR_W, h: CANVAS_H - HEADER_H };
 }
 
 // ----- Palette (bright "productive office") -----
@@ -83,7 +82,12 @@ const STATE = {
 
 const IDLE_TIMEOUT_MS = 2000;
 const SLOW_TOOL_MS    = 10000;
-const STICKY_STATES   = new Set(['done', 'error', 'permission', 'asking']);
+// States that don't auto-decay to 'idle'. thinking/tool/compacting represent
+// in-progress work; while Claude is generating, no events fire (the JSONL
+// transcript only writes on completed assistant blocks), so we must NOT treat
+// the silence as idleness. The Stop hook → 'done', or the tailer's 180s stale
+// sweep, is what brings the agent back to idle.
+const STICKY_STATES   = new Set(['done', 'error', 'permission', 'asking', 'thinking', 'tool', 'compacting']);
 const WALK_SPEED      = 1.4;
 
 function toolKind(tool) {
@@ -987,25 +991,27 @@ function render() {
 
   for (const a of agentsArr) drawAgentOverlay(a);
 
-  // Composite to main canvas (office goes into the viewport right of the sidebar)
+  // Composite to main canvas
   rect(ctx, 0, 0, CANVAS_W, CANVAS_H, PAL.bg);
-  const vp = officeViewport();
-  const baseScale = Math.min(vp.w / FLOOR_W, vp.h / FLOOR_H);
-  const s = baseScale * ZOOM;
-  const w = FLOOR_W * s, h = FLOOR_H * s;
-  const ox = vp.x + (vp.w - w) / 2 + PAN_X;
-  const oy = vp.y + (vp.h - h) / 2 + PAN_Y;
-  ctx.save();
-  ctx.beginPath(); ctx.rect(vp.x, vp.y, vp.w, vp.h); ctx.clip();
-  ctx.drawImage(off, Math.floor(ox), Math.floor(oy), Math.floor(w), Math.floor(h));
-  if (Agents.size === 0) {
-    fillText(ctx, 'Empty office. Run `claude ...` to send the first agent in.',
-      (vp.x + vp.w / 2 - 170) | 0, (CANVAS_H - 28) | 0, PAL.textDim, 11);
+  if (officeVisible()) {
+    const vp = officeViewport();
+    const baseScale = Math.min(vp.w / FLOOR_W, vp.h / FLOOR_H);
+    const s = baseScale * ZOOM;
+    const w = FLOOR_W * s, h = FLOOR_H * s;
+    const ox = vp.x + (vp.w - w) / 2 + PAN_X;
+    const oy = vp.y + (vp.h - h) / 2 + PAN_Y;
+    ctx.save();
+    ctx.beginPath(); ctx.rect(vp.x, vp.y, vp.w, vp.h); ctx.clip();
+    ctx.drawImage(off, Math.floor(ox), Math.floor(oy), Math.floor(w), Math.floor(h));
+    if (Agents.size === 0) {
+      fillText(ctx, 'Empty office. Run `claude ...` to send the first agent in.',
+        (vp.x + vp.w / 2 - 170) | 0, (CANVAS_H - 28) | 0, PAL.textDim, 11);
+    }
+    ctx.restore();
   }
-  ctx.restore();
 
-  // Sidebar + header on top
-  if (sidebarVisible()) drawSidebar(0, HEADER_H, SIDEBAR_W, CANVAS_H - HEADER_H);
+  // Sidebar always shown; header on top
+  drawSidebar(0, HEADER_H, SIDEBAR_W, CANVAS_H - HEADER_H);
   drawHeader();
 
   requestAnimationFrame(render);
@@ -1063,7 +1069,7 @@ window.addEventListener('keydown', (e) => {
 window.addEventListener('wheel', (e) => {
   // Plain wheel over the sidebar scrolls the roster.
   if (!(e.metaKey || e.ctrlKey)) {
-    if (sidebarVisible() && e.clientX < SIDEBAR_W) {
+    if (e.clientX < SIDEBAR_W) {
       ROSTER_SCROLL += e.deltaY;
       e.preventDefault();
     }
@@ -1076,7 +1082,7 @@ window.addEventListener('wheel', (e) => {
 // Drag-to-pan when zoomed in (ignore drags that start on the sidebar)
 let _drag = null;
 cv.addEventListener('mousedown', (e) => {
-  if (sidebarVisible() && e.clientX < SIDEBAR_W) return;
+  if (e.clientX < SIDEBAR_W) return;
   if (ZOOM <= 1) return;
   _drag = { x: e.clientX, y: e.clientY, panX: PAN_X, panY: PAN_Y };
   cv.style.cursor = 'grabbing';
