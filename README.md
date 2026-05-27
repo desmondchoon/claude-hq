@@ -6,7 +6,7 @@ running a tool, typing output, waiting on you — so you can see the state of al
 glance.
 
 <p align="center">
-  <img src="docs/hero.png" alt="Claude HQ — agent roster sidebar on the left, animated pixel office on the right" width="960">
+  <img src="docs/hero.png" alt="Claude HQ pixel office — cubicles, open desks, a glass-walled meeting room, lounge, and kitchen, with status chips above each agent" width="960">
 </p>
 
 ## What it does
@@ -18,12 +18,20 @@ events; the daemon feeds a pixel office where each session is a little character
   shows an icon + label — `thinking`, `tool` (with the tool name, e.g. `Bash`), `output`, `done`,
   `error`, `awaiting you`, `asking`, `compacting`. Blocked agents (permission / asking) pulse so
   you can spot them fast.
-- **An agent roster.** A sidebar lists every active agent with an animated portrait, its status,
-  the model in use, and the **working directory** it's running in — so you always know who's where.
+- **An agent roster.** A resizable sidebar lists every active agent with an animated portrait,
+  its status, the model in use, and the **working directory** it's running in — so you always know
+  who's where. Drag the right edge to resize; the width is remembered between runs.
+- **Spawn agents from HQ.** Hit the `+` button in the sidebar to launch a new `claude` session in
+  a working directory of your choice (with a recent-cwds picker). The session runs in a real PTY
+  owned by the daemon and renders in an embedded **xterm.js terminal panel** docked over the
+  office. Each agent's row gets a `>_` chip that toggles its terminal — minimize keeps it running,
+  close kills it. The terminal panel itself is draggable and resizable, and its geometry persists.
 - **A real office.** A glass-walled meeting room, cubicles, open-desk pods, a lounge, and a
-  kitchen. Sub-agents (from `Task`) get their own characters.
-- **Distinct people.** Characters are composed from layered sprites (skin tone, hairstyle,
-  glasses/headphones) keyed off the session id, so each agent looks like its own person.
+  kitchen — plus a whiteboard, a bookshelf, a printer, and a ping-pong table. Sub-agents (from
+  `Task`) get their own characters.
+- **Distinct people.** Characters are 48px layered sprites — 5 skin tones, 5 hairstyles (short,
+  long, bun, curly, spiky), 9 hair colors, and a glasses/headphones/cap accessory — keyed off the
+  session id, so each agent looks like its own person.
 
 <p align="center">
   <img src="docs/roster.png" alt="Agent roster sidebar" height="360">
@@ -42,36 +50,47 @@ Claude Code  ──hook──▶  ~/.claude-hq/hooks/claude_hq_hook.py
 
 The daemon (a [Tauri](https://tauri.app) app) exposes a tiny HTTP endpoint and a WebSocket. Any
 producer that can `POST /event` shows up in the office — by default that's a Claude Code **hook**,
-but a passive transcript tailer and a legacy PTY shim are also included.
+but a passive transcript tailer and a legacy PTY shim are also included. HQ-spawned sessions
+(launched from the sidebar's `+`) run in a daemon-owned PTY and tag the child with
+`CLAUDE_HQ_OWNER=<session-id>` so the hook's events line up with the on-screen agent.
 
 ## Requirements
 
 - **macOS** (menu-bar tray + always-on-top window are tuned for macOS; Linux likely works too)
 - **Rust** toolchain — install from <https://rustup.rs>
+- **Node.js** + npm — pulls in the Tauri CLI (only needed when bundling the `.app`)
 - **python3** — used by the hook bridge / tailer (preinstalled on macOS)
 - **Claude Code** (the `claude` CLI)
 
 ## Install
 
+You have two options.
+
+**1. Build a `.app` bundle (recommended for end users).** A first-run setup wires the Claude Code
+hook automatically the first time you open the app — no installer script needed.
+
 ```bash
 git clone git@github.com:desmondchoon/claude-hq.git
 cd claude-hq
-./install.sh           # release build; add --debug for a faster, unoptimized build
+npm install
+npm run build          # produces a "Claude HQ.app" (and DMG) under src-tauri/target/release/bundle
 ```
 
-`install.sh` builds the binaries into `~/.claude-hq/bin`, then installs the **Claude Code hooks**
-(the default integration). This writes a small hook into `~/.claude/settings.json` (your existing
-hooks are preserved and backed up) and a helper script under `~/.claude-hq/hooks/`. **No PATH
-change or shell reload is needed.**
+Drag the `.app` to `/Applications`, open it once, and you're done. Re-opens are no-ops; the
+setup is guarded by `~/.claude-hq/.installed`.
 
-Then:
+**2. Script install (no bundling).** Builds the binaries to `~/.claude-hq/bin` and installs the
+Claude Code hooks directly.
 
 ```bash
-~/.claude-hq/bin/claude-hq      # start the daemon (menu bar + window)
+./install.sh           # release build; add --debug for a faster, unoptimized build
+~/.claude-hq/bin/claude-hq    # start the daemon (menu bar + window)
 ```
 
-Now run Claude Code as you normally would — from a terminal or an editor that uses it — and the
-session appears in the office automatically.
+Either way, the installer writes a small hook into `~/.claude/settings.json` (your existing hooks
+are preserved and backed up) and a helper script under `~/.claude-hq/hooks/`. **No PATH change or
+shell reload is needed.** Now run Claude Code as you normally would — from a terminal, an editor
+that uses it, or HQ's own `+` button — and the session appears in the office automatically.
 
 > **Development:** use `./start.sh` instead. It does an incremental build, (re)installs the hooks,
 > and runs the daemon in the foreground (Ctrl-C to quit). Open `src/preview.html` in a browser to
@@ -96,9 +115,13 @@ is for idling.
 
 ## Ingestion options
 
-By default, sessions are captured via **Claude Code hooks** — accurate, real-time, and works no
-matter how `claude` is launched. Two alternatives are bundled:
+Sessions can show up in HQ four ways. Most users just need the first one:
 
+- **Claude Code hooks** (default): accurate, real-time, works no matter how `claude` is launched.
+  Installed automatically — see *Install* above.
+- **Spawn from HQ** (the `+` button): HQ launches `claude` itself in a PTY it owns and shows the
+  live session in an embedded terminal panel. Combined with the hook, you get both the activity
+  state in the office and a real interactive terminal docked in the same window.
 - **Transcript tailer** (passive, zero-config): watches `~/.claude/projects/**/*.jsonl` and reports
   activity for every session, including model and working directory.
   ```bash
@@ -117,16 +140,19 @@ matter how `claude` is launched. Two alternatives are bundled:
 ```
 claude-hq/
 ├── src/                      Front-end (loaded by the Tauri webview)
-│   ├── index.html
-│   ├── renderer.js           Office + roster rendering, agent state machine
+│   ├── index.html            Canvas + spawn dialog + terminal panel chrome
+│   ├── renderer.js           Office + roster rendering, agent state machine, spawn dialog
 │   ├── sprites.js            Asset loader, layered character compositing, tinting
-│   ├── socket.js             WebSocket client
+│   ├── socket.js             WebSocket client (subscribes to daemon events)
+│   ├── terminal.js           Embedded xterm.js terminal for HQ-spawned PTYs
 │   ├── preview.html          Standalone browser demo (synthetic agents)
+│   ├── vendor/               Bundled xterm.js + fit addon + css
 │   └── assets/               Generated pixel art (characters + office tiles)
 ├── src-tauri/                Rust daemon
-│   ├── src/main.rs           App, tray, install subcommands
+│   ├── src/main.rs           App, tray, first-run setup, install subcommands
 │   ├── src/ws.rs             HTTP /event + WebSocket broadcast
 │   ├── src/parser.rs         Activity event model
+│   ├── src/pty.rs            HQ-spawned PTY sessions (pty_spawn/write/resize/kill)
 │   ├── src/install.rs        Hooks installer (default) + legacy shim installer
 │   └── src/bin/shim.rs       Legacy PTY shim
 ├── hooks/                    Hook bridge (claude_hq_hook.py) + installer + settings snippet
@@ -152,6 +178,8 @@ python3 tools/gen_scene.py    # a static office preview (tools/_preview/)
 ```bash
 ./uninstall.sh        # removes the hooks from settings.json and deletes ~/.claude-hq
 ```
+
+If you installed the `.app` bundle, also drag `Claude HQ.app` to the Trash.
 
 ## License
 
