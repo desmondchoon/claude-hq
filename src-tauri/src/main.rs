@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod install;
+mod pty;
 mod ws;
 
 use tauri::{
@@ -28,8 +29,17 @@ fn main() {
 
     let (tx, _rx) = broadcast::channel::<String>(256);
     let tx_ws = tx.clone();
+    let tx_state = tx.clone();
 
     tauri::Builder::default()
+        .manage(tx_state)
+        .manage(pty::PtyState::default())
+        .invoke_handler(tauri::generate_handler![
+            pty::pty_spawn,
+            pty::pty_write,
+            pty::pty_resize,
+            pty::pty_kill,
+        ])
         .setup(move |app| {
             // First launch from a freshly-installed .app: wire up Claude Code
             // hooks automatically so the user doesn't have to find the tray

@@ -29,9 +29,15 @@ let PAN_Y = parseFloat(localStorage.getItem('claudeHqPanY')) || 0;
 let CANVAS_W = 640, CANVAS_H = 480;
 
 // Left agent-roster panel: animated portrait + status + model + directory.
-const SIDEBAR_W = 150;          // CSS px
+const SIDEBAR_MIN = 130, SIDEBAR_MAX = 360;
+let SIDEBAR_W = parseInt(localStorage.getItem('claudeHqSidebarW'), 10);
+if (!Number.isFinite(SIDEBAR_W)) SIDEBAR_W = 150;
+SIDEBAR_W = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, SIDEBAR_W));
 const OFFICE_MIN_CANVAS = 360;  // hide the office below this window width (sidebar always shown)
 let ROSTER_SCROLL = 0;          // vertical scroll offset (px)
+// Hit-test boxes recomputed each frame so canvas clicks can find rows/buttons.
+let ROSTER_HITS = [];           // [{ agent, x, y, w, h }]
+let ADD_HIT = null;             // { x, y, w, h } for the + button
 function officeVisible() { return CANVAS_W >= OFFICE_MIN_CANVAS; }
 // The office is rendered into this viewport (right of the sidebar).
 function officeViewport() {
@@ -329,6 +335,11 @@ function ensureAgent(sessionId, agentId) {
       key: k,
       sessionId,
       agentId: agentId || null,
+      // HQ-spawned PTY sessions use ids prefixed with "hq-" (see
+      // src-tauri/src/pty.rs). For these, clicking the roster row toggles
+      // the embedded terminal and we keep the agent seated until the PTY
+      // exits (not just until Claude says `done`).
+      hqOwned: typeof sessionId === 'string' && sessionId.startsWith('hq-'),
       state: 'idle',
       tool: null,
       toolKind: null,
@@ -907,7 +918,10 @@ function drawRosterRow(a, x, ry, w, rowH) {
   }
   // text column
   const tx = pbx + pbw + 7;
-  const tw = (x + w) - tx - 10;
+  // HQ-owned rows reserve a tiny right-edge column for the terminal glyph,
+  // so the status/model/cwd text wraps before it instead of underrunning it.
+  const rightPad = a.hqOwned ? 18 : 10;
+  const tw = (x + w) - tx - rightPad;
   // status: icon + label
   drawStateIcon(tx + 3, ry + 11, a.state, sc.primary, ctx);
   let label = a.state === 'tool' ? (a.tool || 'tool') : sc.label;
@@ -917,6 +931,15 @@ function drawRosterRow(a, x, ry, w, rowH) {
   fillText(ctx, ellipsize(a.model || '—', tw, 8), tx, ry + 20, PAL.textDim, 8);
   // directory
   fillText(ctx, ellipsize(shortDir(a.cwd), tw, 8), tx, ry + 31, '#8a84a8', 8);
+  // Terminal affordance: a small `>_` chip on rows that have a terminal we
+  // can open. Lights up when its panel is currently visible.
+  if (a.hqOwned) {
+    const isOpen = window.HQTerm && window.HQTerm.isVisibleFor && window.HQTerm.isVisibleFor(a.sessionId);
+    const cx = x + w - 14, cy = ry + rowH / 2 - 6;
+    rect(ctx, cx, cy, 12, 12, isOpen ? '#2e3e5e' : '#1a1a28');
+    rect(ctx, cx, cy, 12, 1, isOpen ? '#5a8fd4' : '#3a3450');
+    fillText(ctx, '>_', cx + 2, cy + 2, isOpen ? '#9ec0e9' : '#8a84a8', 8);
+  }
   // row separator
   rect(ctx, x + 8, ry + rowH - 1, w - 16, 1, '#201b34');
 }
@@ -926,7 +949,18 @@ function drawSidebar(x, y, w, h) {
   rect(ctx, x + w - 1, y, 1, h, '#2a2440');     // divider
   const agents = Array.from(Agents.values()).sort((a, b) => a.created - b.created);
   fillText(ctx, 'AGENTS', x + 10, y + 7, PAL.text, 9);
-  fillText(ctx, String(agents.length), x + w - 8 - String(agents.length).length * 6, y + 7, PAL.textDim, 9);
+  // Count, then a `+` button at the right edge.
+  const countStr = String(agents.length);
+  const addSize = 16;
+  const addX = x + w - 8 - addSize;
+  const addY = y + 4;
+  // count sits just to the left of the +
+  fillText(ctx, countStr, addX - 4 - countStr.length * 6, y + 7, PAL.textDim, 9);
+  // + button
+  rect(ctx, addX, addY, addSize, addSize, '#2a2440');
+  rect(ctx, addX, addY, addSize, 1, '#3a3450');
+  fillText(ctx, '+', addX + 5, addY + 3, '#c0b8e0', 11);
+  ADD_HIT = { x: addX, y: addY, w: addSize, h: addSize };
   rect(ctx, x + 8, y + 20, w - 16, 1, '#2a2440');
 
   const top = y + 24, vh = h - 24, rowH = 46;
@@ -937,8 +971,12 @@ function drawSidebar(x, y, w, h) {
   ctx.save();
   ctx.beginPath(); ctx.rect(x, top, w, vh); ctx.clip();
   let ry = top - ROSTER_SCROLL;
+  ROSTER_HITS = [];
   for (const a of agents) {
-    if (ry + rowH >= top && ry <= top + vh) drawRosterRow(a, x, ry, w, rowH);
+    if (ry + rowH >= top && ry <= top + vh) {
+      drawRosterRow(a, x, ry, w, rowH);
+      ROSTER_HITS.push({ agent: a, x, y: ry, w, h: rowH });
+    }
     ry += rowH;
   }
   ctx.restore();
@@ -1075,7 +1113,40 @@ function clampPan() {
   savePan();
 }
 
-window.addEventListener('resize', () => { resizeCanvas(); clampPan(); });
+window.addEventListener('resize', () => { resizeCanvas(); clampPan(); positionSidebarHandle(); });
+
+// ----- Sidebar resize -----
+const sidebarHandle = document.getElementById('sidebar-resize');
+function positionSidebarHandle() {
+  if (sidebarHandle) sidebarHandle.style.left = SIDEBAR_W + 'px';
+}
+positionSidebarHandle();
+if (sidebarHandle) {
+  let sr = null;
+  sidebarHandle.addEventListener('mousedown', (e) => {
+    sr = { x: e.clientX, w: SIDEBAR_W };
+    sidebarHandle.classList.add('dragging');
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
+  });
+  window.addEventListener('mousemove', (e) => {
+    if (!sr) return;
+    let w = sr.w + (e.clientX - sr.x);
+    // Snap to window-relative bounds too so the office viewport never collapses.
+    const maxByWindow = Math.max(SIDEBAR_MIN, window.innerWidth - 160);
+    w = Math.min(SIDEBAR_MAX, Math.min(maxByWindow, Math.max(SIDEBAR_MIN, w)));
+    SIDEBAR_W = w;
+    positionSidebarHandle();
+    clampPan();
+  });
+  window.addEventListener('mouseup', () => {
+    if (!sr) return;
+    sr = null;
+    sidebarHandle.classList.remove('dragging');
+    document.body.style.userSelect = '';
+    try { localStorage.setItem('claudeHqSidebarW', String(SIDEBAR_W)); } catch {}
+  });
+}
 window.addEventListener('keydown', (e) => {
   if (!(e.metaKey || e.ctrlKey)) return;
   if (e.key === '=' || e.key === '+') { setZoom(ZOOM * 1.25); e.preventDefault(); }
@@ -1176,16 +1247,202 @@ window.addEventListener('claudeEvent', (e) => {
       if (ev.path) agent.cwd = ev.path;
       break;
     case 'done':
-      agent.state = 'done';
       agent.planMode = false;
-      agent.removeAt = performance.now() + 4000;
+      // HQ-spawned sessions stay seated until the PTY itself exits — the
+      // user might run another prompt in the same terminal. Between turns
+      // Claude emits Stop after each reply, so for hqOwned we drop straight
+      // to idle instead of pinning the sticky green 'done' chip.
+      if (agent.hqOwned) {
+        agent.state = 'idle';
+        agent.tool = null; agent.toolKind = null; agent.slow = false;
+      } else {
+        agent.state = 'done';
+        agent.removeAt = performance.now() + 4000;
+      }
       break;
     case 'error':
       agent.state = 'error';
-      agent.removeAt = performance.now() + 6000;
+      // For hqOwned, the PTY is still alive — let the user inspect the
+      // terminal and retry. The pty:exit event below schedules walk-out.
+      if (!agent.hqOwned) agent.removeAt = performance.now() + 6000;
       break;
   }
 });
+
+// =====================================================================
+// Sidebar interaction: + button, click-on-row to toggle terminal panel.
+// =====================================================================
+
+function rosterHitAt(clientX, clientY) {
+  for (const hb of ROSTER_HITS) {
+    if (clientX >= hb.x && clientX < hb.x + hb.w &&
+        clientY >= hb.y && clientY < hb.y + hb.h) return hb;
+  }
+  return null;
+}
+function inAddButton(clientX, clientY) {
+  return ADD_HIT && clientX >= ADD_HIT.x && clientX < ADD_HIT.x + ADD_HIT.w
+    && clientY >= ADD_HIT.y && clientY < ADD_HIT.y + ADD_HIT.h;
+}
+
+cv.addEventListener('click', (e) => {
+  // Sidebar clicks: + button or roster row toggle.
+  if (e.clientX >= SIDEBAR_W) return;
+  if (inAddButton(e.clientX, e.clientY)) {
+    openSpawnDialog();
+    return;
+  }
+  const hit = rosterHitAt(e.clientX, e.clientY);
+  if (hit && hit.agent && hit.agent.hqOwned && window.HQTerm) {
+    window.HQTerm.toggle(hit.agent.sessionId);
+  }
+});
+
+// Pointer cursor over clickable sidebar zones (+ button, HQ-owned rows).
+cv.addEventListener('mousemove', (e) => {
+  if (_drag) return; // panning the office, leave cursor alone
+  if (e.clientX >= SIDEBAR_W) { cv.style.cursor = ''; return; }
+  if (inAddButton(e.clientX, e.clientY)) { cv.style.cursor = 'pointer'; return; }
+  const hit = rosterHitAt(e.clientX, e.clientY);
+  cv.style.cursor = (hit && hit.agent && hit.agent.hqOwned) ? 'pointer' : '';
+});
+
+// =====================================================================
+// Spawn dialog
+// =====================================================================
+
+const dlg          = document.getElementById('spawn-dialog');
+const dlgCwd       = document.getElementById('spawn-cwd');
+const dlgErr       = document.getElementById('spawn-err');
+const dlgGo        = document.getElementById('spawn-go');
+const dlgX         = document.getElementById('spawn-cancel');
+const dlgRecents   = document.getElementById('spawn-recents');
+const dlgRecentsLb = document.getElementById('spawn-recents-label');
+const RECENTS_KEY  = 'claudeHqRecentCwds';
+const RECENTS_MAX  = 8;
+
+function loadRecents() {
+  try {
+    const raw = localStorage.getItem(RECENTS_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr.filter(s => typeof s === 'string') : [];
+  } catch { return []; }
+}
+function saveRecents(list) {
+  try { localStorage.setItem(RECENTS_KEY, JSON.stringify(list)); } catch {}
+}
+function pushRecent(cwd) {
+  if (!cwd) return;
+  const normalized = String(cwd).replace(/\/+$/, '') || '/';
+  const list = loadRecents().filter(p => p !== normalized);
+  list.unshift(normalized);
+  saveRecents(list.slice(0, RECENTS_MAX));
+}
+
+function splitLeaf(p) {
+  const parts = String(p).replace(/\/+$/, '').split('/').filter(Boolean);
+  if (parts.length === 0) return { leaf: '/', parent: '' };
+  const leaf = parts[parts.length - 1];
+  const parent = parts.length > 1 ? '/' + parts.slice(0, -1).join('/') : '/';
+  return { leaf, parent };
+}
+
+function renderRecents() {
+  if (!dlgRecents) return;
+  const list = loadRecents();
+  dlgRecents.innerHTML = '';
+  if (list.length === 0) {
+    dlgRecents.style.display = 'none';
+    dlgRecentsLb.style.display = 'none';
+    return;
+  }
+  dlgRecents.style.display = 'block';
+  dlgRecentsLb.style.display = 'block';
+  for (const p of list) {
+    const { leaf, parent } = splitLeaf(p);
+    const row = document.createElement('div');
+    row.className = 'recent-item';
+    row.title = p;
+    const leafEl = document.createElement('span');
+    leafEl.className = 'leaf';
+    leafEl.textContent = leaf;
+    const parEl = document.createElement('span');
+    parEl.className = 'parent';
+    parEl.textContent = parent === '/' ? '' : '— ' + parent;
+    row.appendChild(leafEl);
+    row.appendChild(parEl);
+    row.addEventListener('click', () => {
+      dlgCwd.value = p;
+      submitSpawn();
+    });
+    dlgRecents.appendChild(row);
+  }
+}
+
+async function defaultCwd() {
+  const list = loadRecents();
+  if (list.length > 0) return list[0];
+  if (window.__TAURI__ && window.__TAURI__.path) {
+    try { return await window.__TAURI__.path.homeDir(); } catch {}
+  }
+  return '';
+}
+
+async function openSpawnDialog() {
+  if (!dlg) return;
+  dlgErr.textContent = '';
+  dlgCwd.value = await defaultCwd();
+  renderRecents();
+  dlg.style.display = 'flex';
+  setTimeout(() => { dlgCwd.focus(); dlgCwd.select(); }, 0);
+}
+function closeSpawnDialog() {
+  if (dlg) dlg.style.display = 'none';
+}
+
+async function submitSpawn() {
+  const cwd = dlgCwd.value.trim();
+  dlgErr.textContent = '';
+  dlgGo.disabled = true;
+  try {
+    if (!window.HQTerm) throw new Error('terminal module not loaded');
+    const sid = await window.HQTerm.spawn({ cwd: cwd || null });
+    if (cwd) pushRecent(cwd);
+    closeSpawnDialog();
+  } catch (e) {
+    dlgErr.textContent = String(e && e.message || e);
+  } finally {
+    dlgGo.disabled = false;
+  }
+}
+
+if (dlg) {
+  dlgGo.addEventListener('click', submitSpawn);
+  dlgX .addEventListener('click', closeSpawnDialog);
+  dlg.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeSpawnDialog();
+    else if (e.key === 'Enter') submitSpawn();
+  });
+  dlg.addEventListener('click', (e) => { if (e.target === dlg) closeSpawnDialog(); });
+}
+
+// =====================================================================
+// PTY exit → walk the agent out and release.
+// =====================================================================
+
+if (window.__TAURI__ && window.__TAURI__.event) {
+  window.__TAURI__.event.listen('pty:exit', (e) => {
+    const sid = e.payload && e.payload.session_id;
+    if (!sid) return;
+    for (const [k, a] of Agents) {
+      if (a.sessionId !== sid) continue;
+      a.state = 'done';
+      // Small grace so the user sees the final state before they leave.
+      a.removeAt = performance.now() + 1500;
+    }
+  });
+}
 
 // Kick off asset loading; flips ASSETS_READY when sprites/tiles are ready.
 // Until then (or if it fails) the render loop uses the procedural fallback.

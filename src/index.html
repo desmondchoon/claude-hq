@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <title>Claude HQ</title>
+  <link rel="stylesheet" href="vendor/xterm.css">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body {
@@ -11,19 +12,176 @@
       font-family: -apple-system, monospace;
     }
     canvas { display: block; image-rendering: pixelated; }
+    #sidebar-resize {
+      position: fixed;
+      top: 0; bottom: 0;
+      width: 5px;
+      transform: translateX(-2px);
+      cursor: col-resize;
+      z-index: 30;
+      background: transparent;
+    }
+    #sidebar-resize:hover, #sidebar-resize.dragging {
+      background: rgba(90, 143, 212, 0.35);
+    }
     #hud {
       position: fixed; bottom: 6px; right: 8px;
       color: #6b6896; font-size: 10px;
       font-family: ui-monospace, monospace;
       pointer-events: none; user-select: none;
     }
+
+    /* ----- Spawn dialog ----- */
+    #spawn-dialog {
+      position: fixed; inset: 0;
+      display: none;
+      align-items: center; justify-content: center;
+      background: rgba(10, 8, 22, 0.72);
+      z-index: 50;
+    }
+    #spawn-dialog .panel {
+      background: #1b1730;
+      border: 1px solid #3a3450;
+      border-radius: 6px;
+      padding: 18px 18px 14px;
+      width: 360px;
+      color: #e2dcc4;
+      font-family: ui-monospace, monospace;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.4);
+    }
+    #spawn-dialog h3 { font-size: 12px; margin-bottom: 10px; color: #c0b8e0; }
+    #spawn-dialog label { font-size: 10px; color: #8a84a8; display: block; margin-bottom: 4px; }
+    #spawn-dialog input {
+      width: 100%; box-sizing: border-box;
+      background: #0f0c1e; border: 1px solid #2a2440;
+      color: #e2dcc4; padding: 6px 8px;
+      border-radius: 3px; font: 11px ui-monospace, monospace;
+      outline: none;
+    }
+    #spawn-dialog input:focus { border-color: #5a8fd4; }
+    #spawn-dialog .recents {
+      margin-top: 10px;
+      max-height: 150px;
+      overflow-y: auto;
+      border: 1px solid #2a2440;
+      border-radius: 3px;
+      background: #0f0c1e;
+    }
+    #spawn-dialog .recents-label {
+      font-size: 9px; color: #6b6896;
+      text-transform: uppercase; letter-spacing: 0.5px;
+      margin-top: 12px; margin-bottom: 4px;
+    }
+    #spawn-dialog .recent-item {
+      display: flex; align-items: center;
+      padding: 5px 8px;
+      font: 10px ui-monospace, monospace;
+      color: #c0b8e0;
+      cursor: pointer;
+      border-bottom: 1px solid #1a1730;
+    }
+    #spawn-dialog .recent-item:last-child { border-bottom: none; }
+    #spawn-dialog .recent-item:hover { background: #1f1a36; color: #e2dcc4; }
+    #spawn-dialog .recent-item .leaf { flex: 0 0 auto; color: #e2dcc4; }
+    #spawn-dialog .recent-item .parent { color: #6b6896; margin-left: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #spawn-dialog .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+    #spawn-dialog button {
+      background: #2a2440; color: #e2dcc4;
+      border: 1px solid #3a3450; border-radius: 3px;
+      padding: 5px 12px; font: 11px ui-monospace, monospace;
+      cursor: pointer;
+    }
+    #spawn-dialog button.primary { background: #4a82a8; border-color: #5a8fd4; }
+    #spawn-dialog button:hover { filter: brightness(1.15); }
+    #spawn-dialog .err { color: #d05858; font-size: 10px; margin-top: 8px; min-height: 12px; }
+
+    /* ----- Terminal panel ----- */
+    #term-panel {
+      position: fixed;
+      display: none;
+      flex-direction: column;
+      background: #0a0814;
+      border: 1px solid #3a3450;
+      border-radius: 6px;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.45);
+      z-index: 40;
+      overflow: hidden;
+    }
+    #term-panel .titlebar {
+      display: flex; align-items: center;
+      gap: 8px;
+      padding: 6px 8px;
+      background: #1b1730;
+      border-bottom: 1px solid #2a2440;
+      color: #e2dcc4;
+      font: 11px ui-monospace, monospace;
+      user-select: none;
+      cursor: grab;
+    }
+    #term-panel .titlebar.dragging { cursor: grabbing; }
+    #term-panel .title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #c0b8e0; }
+    #term-panel .cwd { color: #8a84a8; font-size: 10px; }
+    #term-panel .btn {
+      background: transparent; border: none; color: #8a84a8;
+      width: 22px; height: 18px; line-height: 18px;
+      padding: 0; cursor: pointer; font: 14px ui-monospace, monospace;
+      border-radius: 3px;
+    }
+    #term-panel .btn:hover { background: #2a2440; color: #e2dcc4; }
+    #term-panel .btn.kill:hover { color: #ec9090; }
+    #term-panel .body {
+      flex: 1; padding: 6px 0 0 6px;
+      background: #0a0814;
+      overflow: hidden;
+    }
+    #term-panel .term-host { width: 100%; height: 100%; }
+    /* Drag-resize handle (bottom-right corner). */
+    #term-panel .resize {
+      position: absolute; right: 0; bottom: 0;
+      width: 14px; height: 14px;
+      cursor: nwse-resize;
+      background: linear-gradient(135deg, transparent 50%, #3a3450 50%, #3a3450 60%, transparent 60%, transparent 75%, #3a3450 75%, #3a3450 85%, transparent 85%);
+    }
   </style>
 </head>
 <body>
   <canvas id="canvas"></canvas>
+  <div id="sidebar-resize"></div>
   <div id="hud"></div>
+
+  <!-- Spawn dialog -->
+  <div id="spawn-dialog">
+    <div class="panel">
+      <h3>New Claude agent</h3>
+      <label for="spawn-cwd">Working directory</label>
+      <input id="spawn-cwd" type="text" autocomplete="off" spellcheck="false">
+      <div class="recents-label" id="spawn-recents-label" style="display:none;">Recent</div>
+      <div class="recents" id="spawn-recents" style="display:none;"></div>
+      <div class="err" id="spawn-err"></div>
+      <div class="row">
+        <button id="spawn-cancel">Cancel</button>
+        <button id="spawn-go" class="primary">Spawn</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Terminal panel (single, switches between agents) -->
+  <div id="term-panel">
+    <div class="titlebar">
+      <span class="title">claude</span>
+      <span class="cwd"></span>
+      <button class="btn" id="term-minimize" title="Hide (terminal keeps running)">–</button>
+      <button class="btn kill" id="term-kill" title="Kill terminal">×</button>
+    </div>
+    <div class="body"><div class="term-host"></div></div>
+    <div class="resize"></div>
+  </div>
+
+  <script src="vendor/xterm.js"></script>
+  <script src="vendor/addon-fit.js"></script>
   <script src="socket.js"></script>
   <script src="sprites.js"></script>
+  <script src="terminal.js"></script>
   <script src="renderer.js"></script>
 </body>
 </html>

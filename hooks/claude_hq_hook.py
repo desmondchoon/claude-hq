@@ -85,7 +85,10 @@ def main():
     except Exception:
         d = {}
     ev = d.get("hook_event_name") or (sys.argv[1] if len(sys.argv) > 1 else "")
-    sid = d.get("session_id") or "claude-code"
+    # If claude was spawned from inside Claude HQ, prefer the HQ-owned session
+    # id (set by pty_spawn via env) so the hook events correlate with the
+    # on-screen agent the app already created.
+    sid = os.environ.get("CLAUDE_HQ_OWNER") or d.get("session_id") or "claude-code"
     for e in events_for(ev, d):
         try:
             post(sid, e)
