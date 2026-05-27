@@ -31,6 +31,11 @@ fn main() {
 
     tauri::Builder::default()
         .setup(move |app| {
+            // First launch from a freshly-installed .app: wire up Claude Code
+            // hooks automatically so the user doesn't have to find the tray
+            // menu. Idempotent — guarded by a marker file.
+            install::first_run_setup_if_needed();
+
             // WS + HTTP server on tokio runtime.
             let tx_ws = tx_ws.clone();
             tauri::async_runtime::spawn(async move {

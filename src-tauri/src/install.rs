@@ -72,6 +72,22 @@ fn remove_shim_quiet() {
     }
 }
 
+/// Run `install_hooks()` once per machine, then drop a marker file so we
+/// don't keep rewriting settings.json on every launch. Called from the
+/// Tauri setup hook so the bundled `.app` is self-contained — the user
+/// drags it to Applications, opens it, and hooks are wired automatically.
+pub fn first_run_setup_if_needed() {
+    let Some(hq) = hq_dir() else { return };
+    let marker = hq.join(".installed");
+    if marker.exists() {
+        return;
+    }
+    if install_hooks() == 0 {
+        let _ = std::fs::create_dir_all(&hq);
+        let _ = std::fs::write(&marker, env!("CARGO_PKG_VERSION"));
+    }
+}
+
 pub fn install_hooks() -> i32 {
     let Some(hq) = hq_dir() else {
         eprintln!("[claude-hq install] could not resolve home directory");
