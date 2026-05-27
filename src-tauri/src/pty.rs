@@ -64,10 +64,45 @@ fn make_id() -> String {
     format!("hq-{}-{}", pid, ts)
 }
 
+/// Ask the user's login shell for its PATH. macOS app bundles start with a
+/// stripped system PATH that omits user additions (nvm, homebrew, volta, …).
+/// Running `$SHELL -l -c 'echo $PATH'` gives us the same PATH the user sees
+/// in a terminal, regardless of how the app was launched.
+fn shell_path() -> Option<std::ffi::OsString> {
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
+    let out = std::process::Command::new(&shell)
+        .args(["-l", "-c", "echo $PATH"])
+        .output()
+        .ok()?;
+    if out.status.success() {
+        let s = String::from_utf8(out.stdout).ok()?;
+        Some(s.trim().into())
+    } else {
+        None
+    }
+}
+
+/// Build a merged, deduplicated PATH: process PATH first, then login-shell
+/// PATH. Keeps the first occurrence of each directory.
+fn expanded_path() -> std::ffi::OsString {
+    let mut dirs: Vec<std::path::PathBuf> = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    let proc = std::env::var_os("PATH").unwrap_or_default();
+    let shell = shell_path().unwrap_or_default();
+    for raw in [proc.as_os_str(), shell.as_os_str()] {
+        for d in std::env::split_paths(raw) {
+            if seen.insert(d.clone()) {
+                dirs.push(d);
+            }
+        }
+    }
+    std::env::join_paths(dirs).unwrap_or(proc)
+}
+
 /// Find the real `claude` on PATH, skipping the HQ shim install dir so we
 /// don't end up wrapping ourselves twice.
 fn find_real_claude() -> Option<std::path::PathBuf> {
-    let path = std::env::var_os("PATH")?;
+    let path = expanded_path();
     let shim_dir = dirs::home_dir().map(|h| h.join(".claude-hq").join("bin"));
     for dir in std::env::split_paths(&path) {
         if let Some(ref sd) = shim_dir {
@@ -126,10 +161,13 @@ pub fn pty_spawn(
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| ".".into()));
     cmd.cwd(&cwd_path);
 
-    // Inherit current env so users get their PATH / API keys / etc.
+    // Inherit current env so users get their API keys / etc.
     for (k, v) in std::env::vars_os() {
         cmd.env(k, v);
     }
+    // Override PATH with the expanded shell PATH so that claude and anything
+    // it spawns can find node, git, and other tools the user has on their PATH.
+    cmd.env("PATH", expanded_path());
     // Tag the spawn so the hook can re-key its events onto our session id.
     cmd.env("CLAUDE_HQ_OWNER", &session_id);
     // xterm.js identifies as xterm-256color — claude renders well there.

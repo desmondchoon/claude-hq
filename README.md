@@ -79,6 +79,23 @@ npm run build          # produces a "Claude HQ.app" (and DMG) under src-tauri/ta
 Drag the `.app` to `/Applications`, open it once, and you're done. Re-opens are no-ops; the
 setup is guarded by `~/.claude-hq/.installed`.
 
+### macOS Gatekeeper — "damaged and can't be opened"
+
+If you download a pre-built `.dmg`, macOS will block it because the app is not notarized with an
+Apple Developer ID. The binary itself is fine — you just need to strip the quarantine flag before
+opening it:
+
+```bash
+# After mounting the DMG and dragging the app to /Applications:
+xattr -cr "/Applications/Claude HQ.app"
+```
+
+Then double-click as normal. Alternatively, right-click the app → **Open** → **Open** in the
+dialog — macOS lets you bypass Gatekeeper once that way without the terminal command.
+
+> **Building from source does not have this problem** — Gatekeeper only quarantines files
+> downloaded from the internet.
+
 **2. Script install (no bundling).** Builds the binaries to `~/.claude-hq/bin` and installs the
 Claude Code hooks directly.
 
