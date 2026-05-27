@@ -120,34 +120,35 @@ function toolKind(tool) {
 //   │  [LOUNGE — 2 sofas]                                │
 //   └────────────────────────────────────────────────────┘
 
-const DOOR = { x: 0, y: 250, w: 30, h: 50 };
-const ENTRY_POINT = { x: 50, y: 275 };
+const DOOR = { x: 0, y: 244, w: 30, h: 64 };
+const ENTRY_POINT = { x: 56, y: 278 };
 
 // Each seat has a sit-position (where the sprite is drawn), facing direction,
 // and an approach-point used as the last waypoint before the sit-position.
+// Coordinates retuned in v3 for the larger (48px) characters and furniture.
 const SEATS = [
   // Cubicle row (against top wall) — face UP toward their wall monitors (backs to viewer)
-  { id: 'c1', zone: 'cubicles', kind: 'cubicle', x: 130, y: 95,  approach: { x: 130, y: 150 }, facing: 'up' },
-  { id: 'c2', zone: 'cubicles', kind: 'cubicle', x: 260, y: 95,  approach: { x: 260, y: 150 }, facing: 'up' },
-  { id: 'c3', zone: 'cubicles', kind: 'cubicle', x: 390, y: 95,  approach: { x: 390, y: 150 }, facing: 'up' },
-  { id: 'c4', zone: 'cubicles', kind: 'cubicle', x: 520, y: 95,  approach: { x: 520, y: 150 }, facing: 'up' },
+  { id: 'c1', zone: 'cubicles', kind: 'cubicle', x: 140, y: 96,  approach: { x: 140, y: 170 }, facing: 'up' },
+  { id: 'c2', zone: 'cubicles', kind: 'cubicle', x: 300, y: 96,  approach: { x: 300, y: 170 }, facing: 'up' },
+  { id: 'c3', zone: 'cubicles', kind: 'cubicle', x: 460, y: 96,  approach: { x: 460, y: 170 }, facing: 'up' },
+  { id: 'c4', zone: 'cubicles', kind: 'cubicle', x: 620, y: 96,  approach: { x: 620, y: 170 }, facing: 'up' },
 
   // Open desk row (free-standing pods) — face DOWN out toward the room (faces visible)
-  { id: 'd1', zone: 'desks', kind: 'desk', x: 170, y: 210, approach: { x: 170, y: 250 }, facing: 'down' },
-  { id: 'd2', zone: 'desks', kind: 'desk', x: 320, y: 210, approach: { x: 320, y: 250 }, facing: 'down' },
-  { id: 'd3', zone: 'desks', kind: 'desk', x: 470, y: 210, approach: { x: 470, y: 250 }, facing: 'down' },
+  { id: 'd1', zone: 'desks', kind: 'desk', x: 150, y: 240, approach: { x: 150, y: 300 }, facing: 'down' },
+  { id: 'd2', zone: 'desks', kind: 'desk', x: 320, y: 240, approach: { x: 320, y: 300 }, facing: 'down' },
+  { id: 'd3', zone: 'desks', kind: 'desk', x: 490, y: 240, approach: { x: 490, y: 300 }, facing: 'down' },
 
-  // Conference table (right side, 4 chairs)
-  { id: 'm1', zone: 'meeting', kind: 'meeting', x: 660, y: 200, approach: { x: 600, y: 250 }, facing: 'right' },
-  { id: 'm2', zone: 'meeting', kind: 'meeting', x: 740, y: 200, approach: { x: 700, y: 250 }, facing: 'left' },
-  { id: 'm3', zone: 'meeting', kind: 'meeting', x: 660, y: 290, approach: { x: 600, y: 320 }, facing: 'right' },
-  { id: 'm4', zone: 'meeting', kind: 'meeting', x: 740, y: 290, approach: { x: 700, y: 320 }, facing: 'left' },
+  // Conference table (glass room, right) — table centre (678,254)
+  { id: 'm1', zone: 'meeting', kind: 'meeting', x: 624, y: 224, approach: { x: 600, y: 224 }, facing: 'right' },
+  { id: 'm2', zone: 'meeting', kind: 'meeting', x: 732, y: 224, approach: { x: 612, y: 224 }, facing: 'left' },
+  { id: 'm3', zone: 'meeting', kind: 'meeting', x: 624, y: 290, approach: { x: 600, y: 290 }, facing: 'right' },
+  { id: 'm4', zone: 'meeting', kind: 'meeting', x: 732, y: 290, approach: { x: 612, y: 290 }, facing: 'left' },
 
-  // Lounge (bottom)
-  { id: 'l1', zone: 'lounge', kind: 'sofa', x: 130, y: 400, approach: { x: 130, y: 360 }, facing: 'down' },
-  { id: 'l2', zone: 'lounge', kind: 'sofa', x: 190, y: 400, approach: { x: 190, y: 360 }, facing: 'down' },
-  { id: 'l3', zone: 'lounge', kind: 'sofa', x: 320, y: 400, approach: { x: 320, y: 360 }, facing: 'down' },
-  { id: 'l4', zone: 'lounge', kind: 'sofa', x: 380, y: 400, approach: { x: 380, y: 360 }, facing: 'down' },
+  // Lounge (bottom-left) — two 2-seat sofas
+  { id: 'l1', zone: 'lounge', kind: 'sofa', x: 130, y: 402, approach: { x: 130, y: 350 }, facing: 'down' },
+  { id: 'l2', zone: 'lounge', kind: 'sofa', x: 180, y: 402, approach: { x: 180, y: 350 }, facing: 'down' },
+  { id: 'l3', zone: 'lounge', kind: 'sofa', x: 275, y: 402, approach: { x: 275, y: 350 }, facing: 'down' },
+  { id: 'l4', zone: 'lounge', kind: 'sofa', x: 325, y: 402, approach: { x: 325, y: 350 }, facing: 'down' },
 ];
 // Preferred order by zone (working zones first).
 const ZONE_PRIORITY = ['cubicles', 'desks', 'meeting', 'lounge'];
@@ -158,21 +159,27 @@ const ZONE_PRIORITY = ['cubicles', 'desks', 'meeting', 'lounge'];
 // (rugs + decor + shared furniture) lives here so the layout is editable
 // without touching draw code.
 const RUGS = [
-  { x: 50,  y: 60,  w: FLOOR_W - 220, h: 70  },  // cubicle row carpet
-  { x: 100, y: 180, w: 460,           h: 60  },  // open-desk carpet
-  { x: 80,  y: 360, w: 360,           h: 110 },  // lounge carpet
+  { x: 70,  y: 52,  w: 640, h: 98  },  // cubicle row carpet
+  { x: 95,  y: 200, w: 470, h: 96  },  // open-desk carpet
+  { x: 80,  y: 362, w: 312, h: 108 },  // lounge carpet
+  { x: 30,  y: 264, w: 122, h: 28  },  // entry runner (door → floor)
 ];
+// Decor is drawn back-to-front (roughly top of the room first). Each entry
+// places a furniture sprite by its atlas anchor.
 const DECOR = [
-  { piece: 'counter',     x: 540, y: 380 },  // kitchenette (anchor top-left)
-  { piece: 'table',       x: 700, y: 245 },  // conference table (anchor center)
-  { piece: 'sofa',        x: 160, y: 400 },
-  { piece: 'sofa',        x: 350, y: 400 },
-  { piece: 'plant_big',   x: 60,  y: 160 },
-  { piece: 'plant_big',   x: 590, y: 150 },
-  { piece: 'plant',       x: 470, y: 360 },
-  { piece: 'plant',       x: 60,  y: 470 },
-  { piece: 'pingpong',    x: 470, y: 415 },
-  { piece: 'watercooler', x: 36,  y: 150 },
+  { piece: 'plant_big',   x: 40,  y: 130 },  // left wall, above door
+  { piece: 'watercooler', x: 40,  y: 208 },
+  { piece: 'whiteboard',  x: 300, y: 175 },  // team board (between zones)
+  { piece: 'plant_big',   x: 544, y: 340 },  // fills gap between desks/meeting/lounge
+  { piece: 'printer',     x: 40,  y: 382 },  // left wall, below door
+  { piece: 'bookshelf',   x: 40,  y: 468 },
+  { piece: 'table',       x: 678, y: 254 },  // conference table (anchor center)
+  { piece: 'sofa',        x: 155, y: 410 },
+  { piece: 'sofa',        x: 300, y: 410 },
+  { piece: 'pingpong',    x: 425, y: 432 },
+  { piece: 'counter',     x: 498, y: 372 },  // kitchenette (anchor top-left)
+  { piece: 'plant',       x: 470, y: 356 },
+  { piece: 'plant',       x: 765, y: 474 },  // bottom-right corner
 ];
 
 // ----- Walls / rooms -----
@@ -182,16 +189,16 @@ const DECOR = [
 const WALL_COL = '#4a4658', WALL_TOP = '#6c6878', WALL_SH = '#2a2736';
 const GLASS_FRAME = '#8aa6bc';
 const WALLS = [
-  // glass conference room around the meeting zone (door gap on left wall)
-  { x: 612, y: 150, w: 180, h: 8,  kind: 'glass', layer: 'back'  },  // top
-  { x: 612, y: 150, w: 8,   h: 80, kind: 'glass', layer: 'back'  },  // left-upper
-  { x: 612, y: 278, w: 8,   h: 62, kind: 'glass', layer: 'back'  },  // left-lower
-  { x: 784, y: 150, w: 8,   h: 190,kind: 'glass', layer: 'back'  },  // right
-  { x: 612, y: 332, w: 180, h: 8,  kind: 'glass', layer: 'front' },  // bottom (front)
-  // cubicle back wall + lounge partition (solid)
-  { x: 50,  y: 54,  w: FLOOR_W - 270, h: 6,  kind: 'solid', layer: 'back' },
-  { x: 70,  y: 352, w: 380, h: 6,   kind: 'solid', layer: 'back' },  // lounge top
-  { x: 444, y: 352, w: 6,   h: 128, kind: 'solid', layer: 'back' },  // lounge right
+  // glass conference room around the meeting zone (door gap on left wall, y200..288)
+  { x: 566, y: 146, w: 224, h: 8,  kind: 'glass', layer: 'back'  },  // top
+  { x: 566, y: 146, w: 8,   h: 54, kind: 'glass', layer: 'back'  },  // left-upper
+  { x: 566, y: 288, w: 8,   h: 74, kind: 'glass', layer: 'back'  },  // left-lower
+  { x: 782, y: 146, w: 8,   h: 216,kind: 'glass', layer: 'back'  },  // right
+  { x: 566, y: 360, w: 224, h: 8,  kind: 'glass', layer: 'front' },  // bottom (front)
+  // cubicle backsplash + lounge partition (solid)
+  { x: 70,  y: 46,  w: 640, h: 6,   kind: 'solid', layer: 'back' },  // cubicle top
+  { x: 74,  y: 356, w: 320, h: 6,   kind: 'solid', layer: 'back' },  // lounge top
+  { x: 388, y: 356, w: 6,   h: 116, kind: 'solid', layer: 'back' },  // lounge right
 ];
 
 function drawWallSeg(w) {
@@ -249,11 +256,11 @@ function drawEnvironment() {
   }
 
   // Zone labels (kept; drawn over the floor, clear of agent chips)
-  fillText(offCtx, 'CUBICLES',    55,  18,  PAL.floorText, 8);
-  fillText(offCtx, 'OPEN DESKS',  105, 166, PAL.floorText, 8);
-  fillText(offCtx, 'MEETING',     660, 138, PAL.floorText, 8);
-  fillText(offCtx, 'LOUNGE',      85,  342, PAL.floorText, 8);
-  fillText(offCtx, 'KITCHEN',     542, 366, PAL.floorText, 8);
+  fillText(offCtx, 'CUBICLES',    60,  18,  PAL.floorText, 8);
+  fillText(offCtx, 'OPEN DESKS',  100, 184, PAL.floorText, 8);
+  fillText(offCtx, 'MEETING',     712, 130, PAL.floorText, 8);
+  fillText(offCtx, 'LOUNGE',      84,  344, PAL.floorText, 8);
+  fillText(offCtx, 'KITCHEN',     502, 360, PAL.floorText, 8);
 }
 
 // Choose the animation + frame for an agent's current motion/state.
@@ -432,20 +439,20 @@ function drawFloor() {
   fillText(offCtx, 'IN', 12, DOOR.y + DOOR.h / 2 - 4, PAL.textDim, 7);
 
   // Carpet under cubicle row
-  rect(offCtx, 50, 60, FLOOR_W - 220, 70, PAL.carpetEdge);
-  rect(offCtx, 52, 62, FLOOR_W - 224, 66, PAL.carpet2);
+  rect(offCtx, 70, 52, 640, 98, PAL.carpetEdge);
+  rect(offCtx, 72, 54, 636, 94, PAL.carpet2);
   // Carpet under desks
-  rect(offCtx, 100, 180, 460, 60, PAL.carpetEdge);
-  rect(offCtx, 102, 182, 456, 56, PAL.carpet1);
+  rect(offCtx, 95, 200, 470, 96, PAL.carpetEdge);
+  rect(offCtx, 97, 202, 466, 92, PAL.carpet1);
   // Carpet in lounge
-  rect(offCtx, 80, 360, 360, 110, PAL.carpetEdge);
-  rect(offCtx, 82, 362, 356, 106, PAL.carpet2);
+  rect(offCtx, 80, 362, 312, 108, PAL.carpetEdge);
+  rect(offCtx, 82, 364, 308, 104, PAL.carpet2);
 
   // Zone labels
-  fillText(offCtx, 'CUBICLES',        55, 18, PAL.floorText, 8);
-  fillText(offCtx, 'OPEN DESKS',     105, 170, PAL.floorText, 8);
-  fillText(offCtx, 'CONFERENCE',     600, 170, PAL.floorText, 8);
-  fillText(offCtx, 'LOUNGE',          85, 350, PAL.floorText, 8);
+  fillText(offCtx, 'CUBICLES',        60, 18, PAL.floorText, 8);
+  fillText(offCtx, 'OPEN DESKS',     100, 184, PAL.floorText, 8);
+  fillText(offCtx, 'MEETING',        650, 132, PAL.floorText, 8);
+  fillText(offCtx, 'LOUNGE',          84, 344, PAL.floorText, 8);
 }
 
 function drawCubicleStation(s) {
@@ -505,14 +512,14 @@ function drawSofa(s, mate) {
 }
 
 function drawConferenceTable() {
-  // One big table for all m1..m4
-  rect(offCtx, 630, 175, 130, 140, PAL.woodDark);
-  rect(offCtx, 634, 179, 122, 132, PAL.wood1);
-  rect(offCtx, 634, 179, 122, 2, PAL.wood2);
-  rect(offCtx, 634, 309, 122, 2, PAL.woodDark);
+  // One big table for all m1..m4 (centre ~678,254)
+  rect(offCtx, 600, 180, 156, 148, PAL.woodDark);
+  rect(offCtx, 604, 184, 148, 140, PAL.wood1);
+  rect(offCtx, 604, 184, 148, 2, PAL.wood2);
+  rect(offCtx, 604, 322, 148, 2, PAL.woodDark);
   // Center decoration
-  rect(offCtx, 686, 235, 18, 22, PAL.metalDark);
-  rect(offCtx, 690, 239, 10, 14, PAL.green);
+  rect(offCtx, 669, 243, 18, 22, PAL.metalDark);
+  rect(offCtx, 673, 247, 10, 14, PAL.green);
   // Chairs around (m1..m4 positions)
   for (const s of SEATS.filter(s => s.zone === 'meeting')) {
     rect(offCtx, s.x - 7, s.y - 7, 14, 14, PAL.metal);
@@ -522,22 +529,22 @@ function drawConferenceTable() {
 
 function drawKitchenette() {
   // Bottom-right corner — a counter with coffee/snacks (decor)
-  rect(offCtx, 540, 380, 220, 100, PAL.wood1);
-  rect(offCtx, 540, 380, 220, 2, PAL.wood2);
-  rect(offCtx, 540, 478, 220, 2, PAL.woodDark);
+  rect(offCtx, 498, 372, 294, 112, PAL.wood1);
+  rect(offCtx, 498, 372, 294, 2, PAL.wood2);
+  rect(offCtx, 498, 482, 294, 2, PAL.woodDark);
   // Coffee machine
-  rect(offCtx, 560, 388, 30, 30, PAL.metalDark);
-  rect(offCtx, 564, 392, 22, 8, '#000');
-  rect(offCtx, 568, 404, 14, 10, PAL.metalDark);
-  rect(offCtx, 570, 408, 10, 4, '#5d3a18');
+  rect(offCtx, 520, 384, 30, 30, PAL.metalDark);
+  rect(offCtx, 524, 388, 22, 8, '#000');
+  rect(offCtx, 528, 400, 14, 10, PAL.metalDark);
+  rect(offCtx, 530, 404, 10, 4, '#5d3a18');
   // Plant
-  rect(offCtx, 720, 392, 22, 22, PAL.woodDark);
-  rect(offCtx, 718, 380, 26, 14, PAL.green);
-  rect(offCtx, 724, 374, 14, 10, '#76c89a');
+  rect(offCtx, 758, 388, 22, 22, PAL.woodDark);
+  rect(offCtx, 756, 376, 26, 14, PAL.green);
+  rect(offCtx, 762, 370, 14, 10, '#76c89a');
   // Snack bowl
-  rect(offCtx, 620, 398, 30, 12, PAL.wood2);
-  rect(offCtx, 624, 396, 22, 4, '#e8c060');
-  fillText(offCtx, 'KITCHEN', 542, 370, PAL.floorText, 8);
+  rect(offCtx, 600, 394, 30, 12, PAL.wood2);
+  rect(offCtx, 604, 392, 22, 4, '#e8c060');
+  fillText(offCtx, 'KITCHEN', 502, 360, PAL.floorText, 8);
 }
 
 function drawAllFurniture() {
@@ -567,9 +574,13 @@ function drawAgentBodyPass(a) {
   const sc = STATE[a.state] || STATE.idle;
   const x = Math.round(a.x), y = Math.round(a.y);
 
-  // Shadow (dark translucent — reads well on light floor)
-  c.globalAlpha = 0.28;
-  rect(c, x - 6, y + 8, 12, 3, '#000');
+  // Shadow (dark translucent — reads well on light floor). Sized/placed for
+  // the 48px sprite whose feet sit ~13px below the (x,y) pivot.
+  c.globalAlpha = 0.26;
+  c.fillStyle = '#000';
+  c.beginPath();
+  c.ellipse(x, y + 13, 9, 3.5, 0, 0, Math.PI * 2);
+  c.fill();
   c.globalAlpha = 1;
 
   // Body: sprite when assets are loaded, otherwise the procedural fallback.
@@ -586,19 +597,20 @@ function drawAgentOverlay(a) {
   const sc = STATE[a.state] || STATE.idle;
   const x = Math.round(a.x), y = Math.round(a.y);
 
-  // Status chip (icon + small text) above head (skip while walking in/out)
+  // Status chip (icon + small text) above head (skip while walking in/out).
+  // Offset raised for the taller 48px sprite (head top ~26px above pivot).
   if (!a.walking) {
-    drawStatusChip(a, x, y - 22, sc);
+    drawStatusChip(a, x, y - 32, sc);
   }
   // Plan-mode badge — tiny clipboard floating to the right of head
   if (a.planMode) {
-    rect(c, x + 8, y - 18, 6, 8, '#e8e2c8');
-    rect(c, x + 8, y - 18, 6, 1, '#a09060');
-    rect(c, x + 9, y - 19, 4, 1, '#a09060');
+    rect(c, x + 12, y - 26, 6, 8, '#e8e2c8');
+    rect(c, x + 12, y - 26, 6, 1, '#a09060');
+    rect(c, x + 13, y - 27, 4, 1, '#a09060');
   }
   // Model name plate below the agent (only when seated)
   if (a.model && !a.walking) {
-    drawNamePlate(a, x, y + 13);
+    drawNamePlate(a, x, y + 17);
   }
 }
 
@@ -884,7 +896,11 @@ function drawRosterRow(a, x, ry, w, rowH) {
     ctx.save();
     ctx.beginPath(); ctx.rect(pbx, pby, pbw, pbh); ctx.clip();
     const { anim, frame } = portraitAnim(a);
-    Sprites.drawAgentSprite(ctx, pbx + pbw / 2, pby + pbh - 8, anim, frame, a.apHash, sc.primary);
+    // Scale the 48px sprite down so the whole character fits the portrait box.
+    const psc = 0.72;
+    ctx.translate(pbx + pbw / 2, pby + pbh - 10);
+    ctx.scale(psc, psc);
+    Sprites.drawAgentSprite(ctx, 0, 0, anim, frame, a.apHash, sc.primary);
     ctx.restore();
   } else {
     rect(ctx, pbx + pbw / 2 - 4, pby + pbh / 2 - 4, 8, 8, sc.primary);

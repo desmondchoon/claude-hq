@@ -43,7 +43,7 @@ def tint(gray,color):
 def pick_ap(h):
     h=abs(int(h)); skin=h%A['skinCount']; style=A['hairStyles'][(h//A['skinCount'])%len(A['hairStyles'])]
     col=hx(A['hairColors'][(h//(A['skinCount']*len(A['hairStyles'])))%len(A['hairColors'])])
-    roll=(h//97)%5; acc='glasses' if roll==3 else 'headphones' if roll==4 else 'none'
+    roll=(h//97)%6; acc='glasses' if roll==3 else 'headphones' if roll==4 else 'cap' if roll==5 else 'none'
     return skin,style,col,acc
 
 def cell(name,f):
@@ -55,7 +55,8 @@ def draw_agent(canvas,x,y,anim,f,h,state):
     skin,style,col,acc=pick_ap(h); sx,sy=cell(anim,f); ax,ay=A['anchor']
     dx,dy=int(round(x-ax)),int(round(y-ay)); cl=A['cell']
     def blit(img): canvas.alpha_composite(img.crop((sx,sy,sx+cl,sy+cl)),(dx,dy))
-    sh=Image.new("RGBA",(14,4),(0,0,0,70)); canvas.alpha_composite(sh,(int(x)-7,int(y)+7))
+    sh=Image.new("RGBA",(20,6),(0,0,0,0)); ImageDraw.Draw(sh).ellipse([0,0,19,5],fill=(0,0,0,66))
+    canvas.alpha_composite(sh,(int(x)-10,int(y)+10))
     blit(outs[f"{style}|{acc}"]); blit(tint(shirt,hx(STATE[state][0]))); blit(bodies[skin])
     blit(tint(hairs[style],col))
     if acc!='none': blit(accs[acc])
@@ -76,9 +77,9 @@ def pshadow(c,name,px,py):
 def piece(c,name,px,py):
     a=O['anchors'][name]; c.alpha_composite(pieces[name],(px-a[0],py-a[1]))
 
-WALLS=[(612,150,180,8,'g','back'),(612,150,8,80,'g','back'),(612,278,8,62,'g','back'),
- (784,150,8,190,'g','back'),(612,332,180,8,'g','front'),
- (50,54,FW-270,6,'s','back'),(70,352,380,6,'s','back'),(444,352,6,128,'s','back')]
+WALLS=[(566,146,224,8,'g','back'),(566,146,8,54,'g','back'),(566,288,8,74,'g','back'),
+ (782,146,8,216,'g','back'),(566,360,224,8,'g','front'),
+ (70,46,640,6,'s','back'),(74,356,320,6,'s','back'),(388,356,6,116,'s','back')]
 def wall(c,w):
     x,y,ww,hh,k,_=w; d=ImageDraw.Draw(c)
     if k=='g':
@@ -102,7 +103,7 @@ def font(sz):
 def chip(d,x,y,state,tool=None):
     p,s,lbl=STATE[state]; text='' if state=='idle' else (tool or lbl) if state=='tool' else lbl
     f=font(8); tw=int(d.textlength(text,font=f)) if text else 0
-    iw,pad,gap=9,3,(3 if text else 0); w=pad+iw+gap+tw+pad; h=14; bx=x-w//2; by=y-22-h
+    iw,pad,gap=9,3,(3 if text else 0); w=pad+iw+gap+tw+pad; h=14; bx=x-w//2; by=y-32-h
     d.rounded_rectangle([bx,by,bx+w,by+h],radius=3,fill=(255,255,255),outline=hx(p),width=1)
     d.polygon([(x-2,by+h-1),(x+2,by+h-1),(x,by+h+3)],fill=(255,255,255))
     ix,iy=bx+pad+4,by+h//2; col=hx(s)
@@ -126,23 +127,24 @@ def build():
     c=Image.new("RGBA",(FW,FH),(13,13,18,255))
     tile_region(c,tiles['wall'],0,0,FW,FH)
     fl=Image.new("RGBA",(FW-16,FH-16),(0,0,0,0)); tile_region(fl,tiles['floor'],0,0,FW-16,FH-16); c.alpha_composite(fl,(8,8))
-    for r in [(50,60,FW-220,70),(100,180,460,60),(80,360,360,110)]: rug(c,*r)
+    for r in [(70,52,640,98),(95,200,470,96),(80,362,312,108),(30,264,122,28)]: rug(c,*r)
     walls(c,'back')
-    piece(c,'door',0,275)
-    for n,x,y in [('counter',540,380),('table',700,245),('sofa',160,400),('sofa',350,400),
-                  ('plant_big',60,160),('plant_big',590,150),('plant',470,360),('plant',60,470),
-                  ('pingpong',470,415),('watercooler',36,150)]: pshadow(c,n,x,y); piece(c,n,x,y)
+    piece(c,'door',0,269)
+    for n,x,y in [('plant_big',40,130),('watercooler',40,208),('whiteboard',300,175),
+                  ('printer',40,382),('bookshelf',40,468),('plant_big',544,340),
+                  ('table',678,254),('sofa',155,410),('sofa',300,410),('pingpong',425,432),
+                  ('counter',498,372),('plant',470,356),('plant',765,474)]: pshadow(c,n,x,y); piece(c,n,x,y)
     # cubicles render behind agents; open desks render IN FRONT (desk_front)
-    for n,x,y in [('cubicle',130,95),('cubicle',260,95),('cubicle',390,95),('cubicle',520,95)]:
+    for n,x,y in [('cubicle',140,96),('cubicle',300,96),('cubicle',460,96),('cubicle',620,96)]:
         pshadow(c,n,x,y); piece(c,n,x,y)
-    DESKS_FRONT=[(170,210),(320,210),(470,210)]
-    AG=[(130,95,'sit_up',1,11,'thinking',None),(260,95,'sit_up',1,42,'tool',None),
-        (390,95,'sit_up',0,7,'typing',None),(520,95,'sit_up',1,99,'done','opus-4.6'),
-        (170,210,'sit_down',1,23,'idle',None),(320,210,'sit_down',0,64,'tool','sonnet-4.6'),(470,210,'sit_down',1,5,'thinking',None),
-        (660,200,'sit_right',1,33,'tool',None),(740,200,'sit_left',1,71,'typing',None),
-        (660,290,'sit_right',0,88,'asking',None),(740,290,'sit_left',1,14,'permission',None),
-        (130,400,'sit_down',1,52,'idle',None),(320,400,'sit_down',1,9,'error',None),
-        (80,275,'walk_right',1,40,'tool',None)]
+    DESKS_FRONT=[(150,240),(320,240),(490,240)]
+    AG=[(140,96,'sit_up',1,11,'thinking',None),(300,96,'sit_up',1,42,'tool',None),
+        (460,96,'sit_up',0,485,'typing',None),(620,96,'sit_up',1,99,'done','opus-4.6'),
+        (150,240,'sit_down',1,23,'idle',None),(320,240,'sit_down',0,64,'tool','sonnet-4.6'),(490,240,'sit_down',1,5,'thinking',None),
+        (624,224,'sit_right',1,33,'tool',None),(732,224,'sit_left',1,71,'typing',None),
+        (624,290,'sit_right',0,88,'asking',None),(732,290,'sit_left',1,14,'permission',None),
+        (130,402,'sit_down',1,52,'idle',None),(275,402,'sit_down',1,9,'error',None),
+        (80,278,'walk_right',1,40,'tool',None)]
     for a in sorted(AG,key=lambda r:r[1]): draw_agent(c,a[0],a[1],a[2],a[3],a[4],a[5])
     for x,y in DESKS_FRONT: pshadow(c,'desk_front',x,y); piece(c,'desk_front',x,y)
     walls(c,'front')
@@ -150,8 +152,8 @@ def build():
     for a in AG:
         x,y=a[0],a[1]
         if a[2].startswith('sit'): chip(d,x,y,a[5],'Bash' if a[5]=='tool' else None)
-        if a[6]: nameplate(d,x,y+13,a[6])
-    for t,x,y in [('CUBICLES',55,18),('OPEN DESKS',105,166),('MEETING',660,138),('LOUNGE',85,342),('KITCHEN',542,366)]:
+        if a[6]: nameplate(d,x,y+17,a[6])
+    for t,x,y in [('CUBICLES',60,18),('OPEN DESKS',100,184),('MEETING',712,130),('LOUNGE',84,344),('KITCHEN',502,360)]:
         d.text((x,y),t,font=font(9),fill=(90,79,60))
     c.convert("RGB").save(f"{PREV}/scene.png")
     c.resize((FW*2,FH*2),Image.NEAREST).convert("RGB").save(f"{PREV}/scene_2x.png")

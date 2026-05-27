@@ -1,16 +1,18 @@
 {
-  "cell": 32,
+  "cell": 48,
   "cols": 4,
   "rows": 6,
   "anchor": [
-    16,
-    21
+    24,
+    32
   ],
-  "skinCount": 4,
+  "skinCount": 5,
   "hairStyles": [
     "short",
     "long",
-    "bun"
+    "bun",
+    "curly",
+    "spiky"
   ],
   "hairColors": [
     "#2d2438",
@@ -19,12 +21,15 @@
     "#56a0c0",
     "#c05a90",
     "#4a4a56",
-    "#d0d0d6"
+    "#d0d0d6",
+    "#963434",
+    "#6e54a8"
   ],
   "accessories": [
     "none",
     "glasses",
-    "headphones"
+    "headphones",
+    "cap"
   ],
   "layers": {
     "body": "body_skin{skin}.png",

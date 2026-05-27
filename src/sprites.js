@@ -142,9 +142,9 @@ const Sprites = (() => {
     const skin = h % ch.skinCount;
     const style = ch.hairStyles[((h / ch.skinCount) | 0) % ch.hairStyles.length];
     const colorHex = ch.hairColors[((h / (ch.skinCount * ch.hairStyles.length)) | 0) % ch.hairColors.length];
-    // accessory: ~60% none, then glasses, then headphones
-    const roll = ((h / 97) | 0) % 5;
-    const acc = roll === 3 ? 'glasses' : roll === 4 ? 'headphones' : 'none';
+    // accessory: ~50% none, then glasses / headphones / cap
+    const roll = ((h / 97) | 0) % 6;
+    const acc = roll === 3 ? 'glasses' : roll === 4 ? 'headphones' : roll === 5 ? 'cap' : 'none';
     return { skin, style, colorHex, acc };
   }
 
