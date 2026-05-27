@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Claude HQ — sprite preview (no daemon)</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%; height: 100%; overflow: hidden;
+      background: #1a1530;
+      font-family: -apple-system, monospace;
+    }
+    canvas { display: block; image-rendering: pixelated; }
+    #hud {
+      position: fixed; bottom: 6px; right: 8px;
+      color: #6b6896; font-size: 10px;
+      font-family: ui-monospace, monospace;
+      pointer-events: none; user-select: none;
+    }
+    #demo {
+      position: fixed; top: 18px; left: 8px;
+      color: #b9b3e0; font-size: 11px; font-family: ui-monospace, monospace;
+      background: rgba(18,14,38,.6); padding: 4px 8px; border-radius: 4px;
+      pointer-events: none; user-select: none;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <div id="hud"></div>
+  <div id="demo">demo mode · synthetic agents (no daemon)</div>
+
+  <!-- NOTE: socket.js is intentionally omitted; this page fakes the events. -->
+  <script src="sprites.js"></script>
+  <script src="renderer.js"></script>
+  <script>
+  // ---- Synthetic event driver -------------------------------------
+  // Reproduces what the Rust daemon would push over the WebSocket, so the
+  // office comes alive in a plain browser. Mirrors the event shapes that
+  // renderer.js listens for on the 'claudeEvent' window event.
+  const ev = (o) => window.dispatchEvent(new CustomEvent('claudeEvent', { detail: o }));
+
+  window.dispatchEvent(new CustomEvent('claudeConnected'));
+
+  const TOOLS = ['Bash', 'Read', 'Edit', 'Write', 'Grep', 'WebFetch', 'Task'];
+  const MODELS = ['opus-4.6', 'sonnet-4.6', 'haiku-4.5', 'sonnet-4.6', 'opus-4.6'];
+  const DIRS = ['/Users/dev/projects/claude-hq', '/Users/dev/work/api-server',
+                '/Users/dev/sandbox/scratch', '/Users/dev/projects/web-app',
+                '/Users/dev/notes', '/tmp/build'];
+  const pick = (a) => a[(Math.random() * a.length) | 0];
+
+  let nextId = 1;
+  const live = new Map(); // sessionId -> timer state
+
+  function spawn() {
+    const id = 's' + (nextId++);
+    ev({ type: 'start', session_id: id });
+    ev({ type: 'cwd', session_id: id, path: pick(DIRS) });
+    ev({ type: 'model', session_id: id, name: pick(MODELS) });
+    // give it a behavior loop
+    const behavior = pick(['worker', 'worker', 'worker', 'permission', 'asking', 'error', 'plan']);
+    live.set(id, { id, behavior, step: 0 });
+    step(id);
+  }
+
+  function step(id) {
+    const s = live.get(id);
+    if (!s) return;
+    s.step++;
+    const id_ = id;
+    let delay = 1400 + Math.random() * 1600;
+
+    switch (s.behavior) {
+      case 'permission':
+        if (s.step === 2) { ev({ type: 'tool_call', session_id: id, tool: 'Bash(rm)' }); }
+        else if (s.step === 3) { ev({ type: 'awaiting_permission', session_id: id }); delay = 4000; }
+        else if (s.step >= 4) { ev({ type: 'output', session_id: id, chars: 120 }); finish(id, 4000); return; }
+        else ev({ type: 'thinking', session_id: id });
+        break;
+      case 'asking':
+        if (s.step === 2) { ev({ type: 'asking', session_id: id }); delay = 3500; }
+        else if (s.step >= 3) { finish(id, 3500); return; }
+        else ev({ type: 'thinking', session_id: id });
+        break;
+      case 'error':
+        if (s.step === 2) ev({ type: 'tool_call', session_id: id, tool: pick(TOOLS) });
+        else if (s.step >= 3) { ev({ type: 'error', session_id: id }); return; } // auto-removes
+        else ev({ type: 'thinking', session_id: id });
+        break;
+      case 'plan':
+        if (s.step === 1) ev({ type: 'plan_mode_enter', session_id: id });
+        if (s.step === 2) ev({ type: 'thinking', session_id: id });
+        else if (s.step === 3) { ev({ type: 'tool_call', session_id: id, tool: 'Read' }); }
+        else if (s.step >= 4) { ev({ type: 'plan_mode_exit', session_id: id }); ev({ type: 'output', session_id: id, chars: 80 }); finish(id, 3500); return; }
+        break;
+      default: { // worker: think -> tool -> output, a few cycles, then done
+        const phase = s.step % 3;
+        if (phase === 1) ev({ type: 'thinking', session_id: id });
+        else if (phase === 2) ev({ type: 'tool_call', session_id: id, tool: pick(TOOLS) });
+        else ev({ type: 'output', session_id: id, chars: (Math.random() * 200) | 0 });
+        if (s.step >= 7 + (Math.random() * 6 | 0)) { finish(id, 3500); return; }
+      }
+    }
+    s.t = setTimeout(() => step(id_), delay);
+  }
+
+  function finish(id, after) {
+    ev({ type: 'done', session_id: id });
+    setTimeout(() => live.delete(id), after + 500);
+  }
+
+  // Seed a populated office, then keep a steady churn going.
+  for (let i = 0; i < 8; i++) setTimeout(spawn, i * 500);
+  setInterval(() => { if (live.size < 13) spawn(); }, 3000);
+  </script>
+</body>
+</html>

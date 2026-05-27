@@ -1,0 +1,25 @@
+{
+  "hooks": {
+    "SessionStart": [
+      { "hooks": [ { "type": "command", "command": "python3 $HOME/.claude-hq/hooks/claude_hq_hook.py SessionStart" } ] }
+    ],
+    "UserPromptSubmit": [
+      { "hooks": [ { "type": "command", "command": "python3 $HOME/.claude-hq/hooks/claude_hq_hook.py UserPromptSubmit" } ] }
+    ],
+    "PreToolUse": [
+      { "matcher": "", "hooks": [ { "type": "command", "command": "python3 $HOME/.claude-hq/hooks/claude_hq_hook.py PreToolUse" } ] }
+    ],
+    "PostToolUse": [
+      { "matcher": "", "hooks": [ { "type": "command", "command": "python3 $HOME/.claude-hq/hooks/claude_hq_hook.py PostToolUse" } ] }
+    ],
+    "Notification": [
+      { "hooks": [ { "type": "command", "command": "python3 $HOME/.claude-hq/hooks/claude_hq_hook.py Notification" } ] }
+    ],
+    "PreCompact": [
+      { "hooks": [ { "type": "command", "command": "python3 $HOME/.claude-hq/hooks/claude_hq_hook.py PreCompact" } ] }
+    ],
+    "Stop": [
+      { "hooks": [ { "type": "command", "command": "python3 $HOME/.claude-hq/hooks/claude_hq_hook.py Stop" } ] }
+    ]
+  }
+}

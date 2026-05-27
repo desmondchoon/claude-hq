@@ -1,0 +1,154 @@
+{
+  "cell": 32,
+  "cols": 4,
+  "rows": 6,
+  "anchor": [
+    16,
+    21
+  ],
+  "skinCount": 4,
+  "hairStyles": [
+    "short",
+    "long",
+    "bun"
+  ],
+  "hairColors": [
+    "#2d2438",
+    "#78442e",
+    "#d4a060",
+    "#56a0c0",
+    "#c05a90",
+    "#4a4a56",
+    "#d0d0d6"
+  ],
+  "accessories": [
+    "none",
+    "glasses",
+    "headphones"
+  ],
+  "layers": {
+    "body": "body_skin{skin}.png",
+    "hair": "hair_{style}.png",
+    "shirt": "agent_shirt.png",
+    "acc": "acc_{acc}.png",
+    "outline": "outline_{style}_{acc}.png"
+  },
+  "anims": {
+    "walk_down": {
+      "row": 0,
+      "frames": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "fps": 8
+    },
+    "walk_up": {
+      "row": 1,
+      "frames": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "fps": 8
+    },
+    "walk_left": {
+      "row": 2,
+      "frames": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "fps": 8
+    },
+    "walk_right": {
+      "row": 3,
+      "frames": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "fps": 8
+    },
+    "idle_down": {
+      "row": 0,
+      "frames": [
+        0
+      ],
+      "fps": 1
+    },
+    "idle_up": {
+      "row": 1,
+      "frames": [
+        0
+      ],
+      "fps": 1
+    },
+    "idle_left": {
+      "row": 2,
+      "frames": [
+        0
+      ],
+      "fps": 1
+    },
+    "idle_right": {
+      "row": 3,
+      "frames": [
+        0
+      ],
+      "fps": 1
+    },
+    "sit_down": {
+      "row": 4,
+      "frames": [
+        0,
+        1
+      ],
+      "fps": 3,
+      "cols": [
+        0,
+        1
+      ]
+    },
+    "sit_up": {
+      "row": 4,
+      "frames": [
+        0,
+        1
+      ],
+      "fps": 3,
+      "cols": [
+        2,
+        3
+      ]
+    },
+    "sit_left": {
+      "row": 5,
+      "frames": [
+        0,
+        1
+      ],
+      "fps": 3,
+      "cols": [
+        0,
+        1
+      ]
+    },
+    "sit_right": {
+      "row": 5,
+      "frames": [
+        0,
+        1
+      ],
+      "fps": 3,
+      "cols": [
+        2,
+        3
+      ]
+    }
+  }
+}

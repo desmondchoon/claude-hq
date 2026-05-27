@@ -1,0 +1,49 @@
+# ───────────────────────── Rust / Cargo ─────────────────────────
+# Build cache (this is the multi-GB folder — never commit it).
+target/
+**/*.rs.bk
+*.pdb
+# NOTE: Cargo.lock IS committed on purpose — this project ships binaries
+# (an application), so we want reproducible dependency versions.
+
+# ───────────────────────── Tauri ────────────────────────────────
+# Auto-generated capability/ACL schemas (regenerated on build).
+src-tauri/gen/schemas/
+
+# ───────────────────────── Node / npm ───────────────────────────
+node_modules/
+dist/
+.npm/
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+
+# ───────────────────────── Python (tools / hooks) ───────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.mypy_cache/
+.pytest_cache/
+
+# ───────────────────────── Generated previews ───────────────────
+# Regenerable output from tools/gen_*.py and the verify harness.
+tools/_preview/
+
+# ───────────────────────── Editors / OS ─────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+.AppleDouble
+._*
+
+# ───────────────────────── Misc ─────────────────────────────────
+*.log
+.env
+.env.local
+.env.*.local

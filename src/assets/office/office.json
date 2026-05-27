@@ -1,0 +1,58 @@
+{
+  "anchors": {
+    "cubicle": [
+      44,
+      40
+    ],
+    "desk": [
+      40,
+      30
+    ],
+    "desk_front": [
+      42,
+      10
+    ],
+    "sofa": [
+      40,
+      24
+    ],
+    "table": [
+      75,
+      75
+    ],
+    "plant": [
+      10,
+      24
+    ],
+    "plant_big": [
+      14,
+      32
+    ],
+    "counter": [
+      0,
+      0
+    ],
+    "pingpong": [
+      48,
+      28
+    ],
+    "door": [
+      0,
+      28
+    ],
+    "watercooler": [
+      10,
+      27
+    ]
+  },
+  "tiles": {
+    "floor": "floor.png",
+    "rug": "rug.png",
+    "wall": "wall.png"
+  },
+  "rugEdge": [
+    35,
+    72,
+    106
+  ]
+}
