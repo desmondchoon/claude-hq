@@ -64,39 +64,94 @@ fn make_id() -> String {
     format!("hq-{}-{}", pid, ts)
 }
 
-/// Ask the user's login shell for its PATH. macOS app bundles start with a
-/// stripped system PATH that omits user additions (nvm, homebrew, volta, …).
-/// Running `$SHELL -l -c 'echo $PATH'` gives us the same PATH the user sees
-/// in a terminal, regardless of how the app was launched.
+/// Ask the user's login shell for its PATH.
+///
+/// macOS app bundles start with a stripped system PATH. We try the shell with
+/// both interactive+login flags (sources .zshrc AND .zprofile) and fall back
+/// to login-only. Returns None if the subprocess fails or produces no output.
 fn shell_path() -> Option<std::ffi::OsString> {
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
-    let out = std::process::Command::new(&shell)
-        .args(["-l", "-c", "echo $PATH"])
-        .output()
-        .ok()?;
-    if out.status.success() {
-        let s = String::from_utf8(out.stdout).ok()?;
-        Some(s.trim().into())
-    } else {
-        None
-    }
-}
-
-/// Build a merged, deduplicated PATH: process PATH first, then login-shell
-/// PATH. Keeps the first occurrence of each directory.
-fn expanded_path() -> std::ffi::OsString {
-    let mut dirs: Vec<std::path::PathBuf> = Vec::new();
-    let mut seen = std::collections::HashSet::new();
-    let proc = std::env::var_os("PATH").unwrap_or_default();
-    let shell = shell_path().unwrap_or_default();
-    for raw in [proc.as_os_str(), shell.as_os_str()] {
-        for d in std::env::split_paths(raw) {
-            if seen.insert(d.clone()) {
-                dirs.push(d);
+    // Try interactive+login first so that .zshrc is sourced (nvm, rbenv, etc.
+    // are commonly configured there rather than in .zprofile).
+    for args in [
+        vec!["-i", "-l", "-c", "echo $PATH"],
+        vec!["-l", "-c", "echo $PATH"],
+    ] {
+        if let Ok(out) = std::process::Command::new(&shell).args(&args).output() {
+            if out.status.success() {
+                if let Ok(s) = String::from_utf8(out.stdout) {
+                    let trimmed = s.trim();
+                    if !trimmed.is_empty() {
+                        return Some(trimmed.into());
+                    }
+                }
             }
         }
     }
-    std::env::join_paths(dirs).unwrap_or(proc)
+    None
+}
+
+/// Return well-known directories where `claude` is commonly installed,
+/// regardless of the current PATH. Used as a last-resort fallback when the
+/// app bundle's PATH and the login-shell PATH both come up empty.
+fn common_claude_dirs() -> Vec<std::path::PathBuf> {
+    let mut dirs = Vec::new();
+    let home = match dirs::home_dir() {
+        Some(h) => h,
+        None => return dirs,
+    };
+
+    // Explicit well-known prefixes (order = search priority)
+    for rel in [
+        ".local/bin",
+        ".volta/bin",
+        ".npm-global/bin",
+        ".yarn/bin",
+    ] {
+        dirs.push(home.join(rel));
+    }
+    dirs.push(std::path::PathBuf::from("/opt/homebrew/bin"));
+    dirs.push(std::path::PathBuf::from("/usr/local/bin"));
+
+    // nvm: scan all installed node versions (newest first by lexicographic sort)
+    let nvm_root = std::env::var_os("NVM_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| home.join(".nvm"));
+    let versions_dir = nvm_root.join("versions/node");
+    if let Ok(entries) = std::fs::read_dir(&versions_dir) {
+        let mut versions: Vec<_> = entries.flatten().map(|e| e.path()).collect();
+        versions.sort_by(|a, b| b.cmp(a));
+        for v in versions {
+            dirs.push(v.join("bin"));
+        }
+    }
+
+    dirs
+}
+
+/// Build a merged, deduplicated PATH: process PATH, then login-shell PATH,
+/// then common install locations. Keeps the first occurrence of each dir.
+fn expanded_path() -> std::ffi::OsString {
+    let mut result: Vec<std::path::PathBuf> = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+
+    let proc = std::env::var_os("PATH").unwrap_or_default();
+    let shell = shell_path().unwrap_or_default();
+
+    for raw in [proc.as_os_str(), shell.as_os_str()] {
+        for d in std::env::split_paths(raw) {
+            if seen.insert(d.clone()) {
+                result.push(d);
+            }
+        }
+    }
+    for d in common_claude_dirs() {
+        if seen.insert(d.clone()) {
+            result.push(d);
+        }
+    }
+
+    std::env::join_paths(result).unwrap_or(proc)
 }
 
 /// Find the real `claude` on PATH, skipping the HQ shim install dir so we
