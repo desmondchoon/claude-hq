@@ -20,6 +20,9 @@
     ],
     "Stop": [
       { "hooks": [ { "type": "command", "command": "python3 $HOME/.claude-hq/hooks/claude_hq_hook.py Stop" } ] }
+    ],
+    "SessionEnd": [
+      { "hooks": [ { "type": "command", "command": "python3 $HOME/.claude-hq/hooks/claude_hq_hook.py SessionEnd" } ] }
     ]
   }
 }

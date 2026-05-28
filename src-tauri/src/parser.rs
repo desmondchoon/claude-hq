@@ -10,6 +10,11 @@ pub enum ActivityEvent {
     ToolCall { tool: String },
     Output { chars: usize },
     Done,
+    /// The Claude Code session itself terminated (SessionEnd hook). Distinct
+    /// from `Done` — Done fires at the end of every turn, SessionEnd only on
+    /// session exit and should always walk the agent out, regardless of how
+    /// the session was launched.
+    SessionEnd,
     Error { message: String },
     /// Claude is blocked on a y/n permission prompt — user needs to act.
     AwaitingPermission,

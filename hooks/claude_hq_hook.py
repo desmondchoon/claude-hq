@@ -71,6 +71,11 @@ def events_for(ev, d):
                    else {"type": "awaiting_permission"})
     elif ev == "Stop":
         out.append({"type": "done"})
+    elif ev == "SessionEnd":
+        # Session is terminating — walk the agent out so orphans don't pile up
+        # when an external `claude` exits without finishing a turn (Ctrl-C,
+        # window closed, etc.).
+        out.append({"type": "session_end"})
     # SubagentStart/SubagentStop: left for the transcript tailer (it has stable ids)
     return out
 

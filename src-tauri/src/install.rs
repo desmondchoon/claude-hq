@@ -19,6 +19,7 @@ const HOOK_EVENTS: &[(&str, bool)] = &[
     ("Notification", false),
     ("PreCompact", false),
     ("Stop", false),
+    ("SessionEnd", false),
 ];
 
 fn home() -> Option<PathBuf> {
@@ -79,12 +80,18 @@ fn remove_shim_quiet() {
 pub fn first_run_setup_if_needed() {
     let Some(hq) = hq_dir() else { return };
     let marker = hq.join(".installed");
-    if marker.exists() {
-        return;
+    let current = env!("CARGO_PKG_VERSION");
+    // Re-run when the marker is missing OR was written by an older version —
+    // newer releases may add hook entries (e.g. SessionEnd in 0.3.x) that an
+    // existing install needs picked up. install_hooks() is idempotent.
+    if let Ok(stamp) = std::fs::read_to_string(&marker) {
+        if stamp.trim() == current {
+            return;
+        }
     }
     if install_hooks() == 0 {
         let _ = std::fs::create_dir_all(&hq);
-        let _ = std::fs::write(&marker, env!("CARGO_PKG_VERSION"));
+        let _ = std::fs::write(&marker, current);
     }
 }
 

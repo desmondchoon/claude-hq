@@ -37,6 +37,8 @@ const OFFICE_MIN_CANVAS = 360;  // hide the office below this window width (side
 let ROSTER_SCROLL = 0;          // vertical scroll offset (px)
 // Hit-test boxes recomputed each frame so canvas clicks can find rows/buttons.
 let ROSTER_HITS = [];           // [{ agent, x, y, w, h }]
+let DISMISS_HITS = [];          // [{ sessionId, x, y, w, h }] — × on external rows
+let SHOW_HIDDEN_HIT = null;     // { x, y, w, h } for "show hidden (N)" footer link
 let ADD_HIT = null;             // { x, y, w, h } for the + button
 function officeVisible() { return CANVAS_W >= OFFICE_MIN_CANVAS; }
 // The office is rendered into this viewport (right of the sidebar).
@@ -88,6 +90,20 @@ const STATE = {
 
 const IDLE_TIMEOUT_MS = 2000;
 const SLOW_TOOL_MS    = 10000;
+
+// Sessions the user has hidden via the × on an external roster row. Persisted
+// so hook events from that session ID stay suppressed across reloads — useful
+// for orphaned external sessions whose source process never emits SessionEnd.
+const DISMISSED_KEY = 'claudeHqDismissedSessions';
+const DISMISSED = (() => {
+  try {
+    const raw = localStorage.getItem(DISMISSED_KEY);
+    return new Set(raw ? JSON.parse(raw) : []);
+  } catch { return new Set(); }
+})();
+function saveDismissed() {
+  try { localStorage.setItem(DISMISSED_KEY, JSON.stringify([...DISMISSED])); } catch {}
+}
 // States that don't auto-decay to 'idle'. thinking/tool/compacting represent
 // in-progress work; while Claude is generating, no events fire (the JSONL
 // transcript only writes on completed assistant blocks), so we must NOT treat
@@ -327,6 +343,7 @@ function pickHair(key)      { return HAIR_PALETTE[hashKey(key) % HAIR_PALETTE.le
 function pickHairIndex(key) { return hashKey(key) % HAIR_PALETTE.length; }
 
 function ensureAgent(sessionId, agentId) {
+  if (DISMISSED.has(sessionId)) return null;
   const k = agentKey(sessionId, agentId);
   let a = Agents.get(k);
   if (!a) {
@@ -374,6 +391,24 @@ function releaseAgent(k) {
   if (!a) return;
   if (a.seatId) occupiedSeats.delete(a.seatId);
   Agents.delete(k);
+}
+
+// User dismissed an external session from the roster. Persist the sessionId
+// so further hook events stay ignored, and walk out any agents already on the
+// floor that share it (covers subagents under the same session).
+function dismissSession(sessionId) {
+  if (!sessionId) return;
+  DISMISSED.add(sessionId);
+  saveDismissed();
+  const now = performance.now();
+  for (const ag of Agents.values()) {
+    if (ag.sessionId === sessionId && !ag.exiting) ag.removeAt = now - 1;
+  }
+}
+
+function clearDismissed() {
+  DISMISSED.clear();
+  saveDismissed();
 }
 
 function seatById(id) { return SEATS.find(s => s.id === id) || null; }
@@ -918,9 +953,10 @@ function drawRosterRow(a, x, ry, w, rowH) {
   }
   // text column
   const tx = pbx + pbw + 7;
-  // HQ-owned rows reserve a tiny right-edge column for the terminal glyph,
-  // so the status/model/cwd text wraps before it instead of underrunning it.
-  const rightPad = a.hqOwned ? 18 : 10;
+  // Reserve a uniform right-edge column for the per-row chip(s) — `>_` on
+  // HQ-owned rows, "ext" + `×` on external rows — so text wrapping is the
+  // same width in both cases.
+  const rightPad = 18;
   const tw = (x + w) - tx - rightPad;
   // status: icon + label
   drawStateIcon(tx + 3, ry + 11, a.state, sc.primary, ctx);
@@ -931,14 +967,26 @@ function drawRosterRow(a, x, ry, w, rowH) {
   fillText(ctx, ellipsize(a.model || '—', tw, 8), tx, ry + 20, PAL.textDim, 8);
   // directory
   fillText(ctx, ellipsize(shortDir(a.cwd), tw, 8), tx, ry + 31, '#8a84a8', 8);
-  // Terminal affordance: a small `>_` chip on rows that have a terminal we
-  // can open. Lights up when its panel is currently visible.
   if (a.hqOwned) {
+    // Terminal affordance: a small `>_` chip on rows that have a terminal we
+    // can open. Lights up when its panel is currently visible.
     const isOpen = window.HQTerm && window.HQTerm.isVisibleFor && window.HQTerm.isVisibleFor(a.sessionId);
     const cx = x + w - 14, cy = ry + rowH / 2 - 6;
     rect(ctx, cx, cy, 12, 12, isOpen ? '#2e3e5e' : '#1a1a28');
     rect(ctx, cx, cy, 12, 1, isOpen ? '#5a8fd4' : '#3a3450');
     fillText(ctx, '>_', cx + 2, cy + 2, isOpen ? '#9ec0e9' : '#8a84a8', 8);
+  } else {
+    // External (non-HQ-owned) row: small dim "ext" pill marks it as a session
+    // HQ doesn't own, and an `×` button dismisses it (walks the agent out and
+    // mutes future events from this session id).
+    const px = x + w - 17, py = ry + 6;
+    rect(ctx, px, py, 14, 8, '#231d36');
+    fillText(ctx, 'ext', px + 2, py + 1, '#8a84a8', 7);
+    const cx = x + w - 14, cy = ry + rowH / 2 - 1;
+    rect(ctx, cx, cy, 12, 12, '#2a1a24');
+    rect(ctx, cx, cy, 12, 1, '#5a3848');
+    fillText(ctx, '×', cx + 3, cy + 2, '#d09898', 9);
+    DISMISS_HITS.push({ sessionId: a.sessionId, x: cx, y: cy, w: 12, h: 12 });
   }
   // row separator
   rect(ctx, x + 8, ry + rowH - 1, w - 16, 1, '#201b34');
@@ -963,7 +1011,8 @@ function drawSidebar(x, y, w, h) {
   ADD_HIT = { x: addX, y: addY, w: addSize, h: addSize };
   rect(ctx, x + 8, y + 20, w - 16, 1, '#2a2440');
 
-  const top = y + 24, vh = h - 24, rowH = 46;
+  const footerH = DISMISSED.size > 0 ? 16 : 0;
+  const top = y + 24, vh = h - 24 - footerH, rowH = 46;
   const contentH = agents.length * rowH;
   const maxScroll = Math.max(0, contentH - vh);
   ROSTER_SCROLL = Math.max(0, Math.min(maxScroll, ROSTER_SCROLL));
@@ -972,6 +1021,7 @@ function drawSidebar(x, y, w, h) {
   ctx.beginPath(); ctx.rect(x, top, w, vh); ctx.clip();
   let ry = top - ROSTER_SCROLL;
   ROSTER_HITS = [];
+  DISMISS_HITS = [];
   for (const a of agents) {
     if (ry + rowH >= top && ry <= top + vh) {
       drawRosterRow(a, x, ry, w, rowH);
@@ -990,6 +1040,18 @@ function drawSidebar(x, y, w, h) {
     const thumbY = top + (ROSTER_SCROLL / maxScroll) * (vh - thumbH);
     rect(ctx, x + w - 4, top, 2, vh, '#241f3a');
     rect(ctx, x + w - 4, thumbY | 0, 2, thumbH | 0, '#5a5478');
+  }
+
+  // Footer: "show hidden (N)" link when there are dismissed sessions. Click
+  // unhides everything — they'll reappear on the next event from their source.
+  SHOW_HIDDEN_HIT = null;
+  if (footerH > 0) {
+    const fy = y + h - footerH;
+    rect(ctx, x, fy, w, 1, '#2a2440');
+    rect(ctx, x, fy + 1, w, footerH - 1, '#15122a');
+    const txt = `show hidden (${DISMISSED.size})`;
+    fillText(ctx, txt, x + 10, fy + 4, '#9ec0e9', 9);
+    SHOW_HIDDEN_HIT = { x, y: fy, w, h: footerH };
   }
 }
 
@@ -1205,6 +1267,7 @@ window.addEventListener('claudeEvent', (e) => {
   const sessionId = ev.session_id || 'default';
   const agentId = ev.agent_id || null;
   const agent = ensureAgent(sessionId, agentId);
+  if (!agent) return; // session is in the dismissed set
   agent.lastActivity = performance.now();
   agent.removeAt = null;
 
@@ -1271,6 +1334,13 @@ window.addEventListener('claudeEvent', (e) => {
       // terminal and retry. The pty:exit event below schedules walk-out.
       if (!agent.hqOwned) agent.removeAt = performance.now() + 6000;
       break;
+    case 'session_end':
+      // SessionEnd hook fired — the source `claude` process is terminating.
+      // Walk out regardless of hqOwned; for HQ-spawned sessions, pty:exit
+      // would do the same shortly after anyway.
+      agent.state = 'done';
+      agent.removeAt = performance.now() + 1500;
+      break;
   }
 });
 
@@ -1317,11 +1387,28 @@ function officeAgentAt(clientX, clientY) {
   return best;
 }
 
+function inHit(hit, cx, cy) {
+  return hit && cx >= hit.x && cx < hit.x + hit.w && cy >= hit.y && cy < hit.y + hit.h;
+}
+function dismissHitAt(cx, cy) {
+  for (const hb of DISMISS_HITS) if (inHit(hb, cx, cy)) return hb;
+  return null;
+}
+
 cv.addEventListener('click', (e) => {
-  // Sidebar clicks: + button or roster row toggle.
+  // Sidebar clicks: + button, dismiss × on a row, show-hidden footer, or roster row toggle.
   if (e.clientX < SIDEBAR_W) {
     if (inAddButton(e.clientX, e.clientY)) {
       openSpawnDialog();
+      return;
+    }
+    const dh = dismissHitAt(e.clientX, e.clientY);
+    if (dh) {
+      dismissSession(dh.sessionId);
+      return;
+    }
+    if (inHit(SHOW_HIDDEN_HIT, e.clientX, e.clientY)) {
+      clearDismissed();
       return;
     }
     const hit = rosterHitAt(e.clientX, e.clientY);
@@ -1342,7 +1429,9 @@ cv.addEventListener('click', (e) => {
 cv.addEventListener('mousemove', (e) => {
   if (_drag) return; // panning the office, leave cursor alone
   if (e.clientX < SIDEBAR_W) {
-    if (inAddButton(e.clientX, e.clientY)) {
+    if (inAddButton(e.clientX, e.clientY)
+        || dismissHitAt(e.clientX, e.clientY)
+        || inHit(SHOW_HIDDEN_HIT, e.clientX, e.clientY)) {
       cv.style.cursor = 'pointer'; return;
     }
     const hit = rosterHitAt(e.clientX, e.clientY);
