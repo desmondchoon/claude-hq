@@ -22,6 +22,7 @@ const cwdEl    = panel?.querySelector('.cwd');
 const hostEl   = panel?.querySelector('.term-host');
 const minBtn   = document.getElementById('term-minimize');
 const killBtn  = document.getElementById('term-kill');
+const gitBtn   = document.getElementById('term-git');
 const titlebar = panel?.querySelector('.titlebar');
 const resizeEl = panel?.querySelector('.resize');
 
@@ -134,10 +135,11 @@ function createTerminal(sessionId) {
   return { term, fit, mounted: false };
 }
 
-async function spawn({ cwd }) {
+async function spawn({ cwd, bypassPermissions = false } = {}) {
   if (!invoke) throw new Error('Tauri invoke not available');
   await setupTauriListeners();
-  const sessionId = await invoke('pty_spawn', { cwd, args: null, rows: 30, cols: 100 });
+  const args = bypassPermissions ? ['--dangerously-skip-permissions'] : null;
+  const sessionId = await invoke('pty_spawn', { cwd, args, rows: 30, cols: 100 });
   const sess = createTerminal(sessionId);
   sess.cwd = cwd;
   Sessions.set(sessionId, sess);
@@ -177,8 +179,20 @@ function show(sessionId) {
   applyGeom();
   titleEl.textContent = 'claude';
   cwdEl.textContent = sess.cwd ? shortPath(sess.cwd) : '';
+  window.dispatchEvent(new CustomEvent('hq:activeCwdChanged', {
+    detail: { cwd: sess.cwd || null, sessionId }
+  }));
   if (!sess.mounted) {
-    sess.term.open(hostEl);
+    if (sess.term.element) {
+      // xterm has already been opened once; re-attach its DOM element to the
+      // host instead of calling open() again (which leaves the renderer in
+      // a broken state and shows an empty/black panel).
+      if (sess.term.element.parentElement !== hostEl) {
+        hostEl.appendChild(sess.term.element);
+      }
+    } else {
+      sess.term.open(hostEl);
+    }
     sess.mounted = true;
   }
   // Fit + force-refresh after layout settles. Double rAF: the first frame
@@ -288,6 +302,18 @@ if (panel) {
 
   minBtn.addEventListener('click', hide);
   killBtn.addEventListener('click', () => { if (activeId) kill(activeId); });
+  if (gitBtn) {
+    gitBtn.addEventListener('click', () => {
+      if (!window.HQGit) return;
+      // Ensure the git panel targets the active terminal's cwd before opening.
+      const sess = activeId ? Sessions.get(activeId) : null;
+      if (sess && sess.cwd) window.HQGit.refreshFor(sess.cwd);
+      window.HQGit.toggle();
+    });
+    window.addEventListener('hq:gitVisibilityChanged', (e) => {
+      gitBtn.classList.toggle('active', !!(e.detail && e.detail.visible));
+    });
+  }
 
   window.addEventListener('resize', () => {
     applyGeom();

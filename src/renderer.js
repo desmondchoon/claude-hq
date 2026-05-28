@@ -1152,6 +1152,7 @@ window.addEventListener('keydown', (e) => {
   if (e.key === '=' || e.key === '+') { setZoom(ZOOM * 1.25); e.preventDefault(); }
   else if (e.key === '-' || e.key === '_') { setZoom(ZOOM / 1.25); e.preventDefault(); }
   else if (e.key === '0') { setZoom(1); e.preventDefault(); }
+  else if (e.key === 'g' || e.key === 'G') { if (window.HQGit) { window.HQGit.toggle(); e.preventDefault(); } }
 });
 window.addEventListener('wheel', (e) => {
   // Plain wheel over the sidebar scrolls the roster.
@@ -1168,8 +1169,10 @@ window.addEventListener('wheel', (e) => {
 
 // Drag-to-pan when zoomed in (ignore drags that start on the sidebar)
 let _drag = null;
+let _didPan = false;
 cv.addEventListener('mousedown', (e) => {
   if (e.clientX < SIDEBAR_W) return;
+  _didPan = false;
   if (ZOOM <= 1) return;
   _drag = { x: e.clientX, y: e.clientY, panX: PAN_X, panY: PAN_Y };
   cv.style.cursor = 'grabbing';
@@ -1177,8 +1180,10 @@ cv.addEventListener('mousedown', (e) => {
 });
 window.addEventListener('mousemove', (e) => {
   if (!_drag) return;
-  PAN_X = _drag.panX + (e.clientX - _drag.x);
-  PAN_Y = _drag.panY + (e.clientY - _drag.y);
+  const dx = e.clientX - _drag.x, dy = e.clientY - _drag.y;
+  if (!_didPan && (Math.abs(dx) > 3 || Math.abs(dy) > 3)) _didPan = true;
+  PAN_X = _drag.panX + dx;
+  PAN_Y = _drag.panY + dy;
   clampPan();
 });
 window.addEventListener('mouseup', () => {
@@ -1285,26 +1290,66 @@ function inAddButton(clientX, clientY) {
     && clientY >= ADD_HIT.y && clientY < ADD_HIT.y + ADD_HIT.h;
 }
 
+// Convert a screen-space point to floor coordinates using the current transform.
+function screenToFloor(clientX, clientY) {
+  if (!officeVisible()) return null;
+  const vp = officeViewport();
+  const baseScale = Math.min(vp.w / FLOOR_W, vp.h / FLOOR_H);
+  const s = baseScale * ZOOM;
+  const ox = vp.x + (vp.w - FLOOR_W * s) / 2 + PAN_X;
+  const oy = vp.y + (vp.h - FLOOR_H * s) / 2 + PAN_Y;
+  return { x: (clientX - ox) / s, y: (clientY - oy) / s };
+}
+
+// Return the hqOwned agent under a screen-space click in the office, or null.
+const AGENT_HIT_R = 22; // floor-pixel radius around the agent pivot
+function officeAgentAt(clientX, clientY) {
+  if (clientX < SIDEBAR_W) return null;
+  const fp = screenToFloor(clientX, clientY);
+  if (!fp) return null;
+  let best = null, bestD2 = AGENT_HIT_R * AGENT_HIT_R;
+  for (const a of Agents.values()) {
+    if (!a.hqOwned) continue;
+    const dx = fp.x - a.x, dy = fp.y - a.y;
+    const d2 = dx * dx + dy * dy;
+    if (d2 <= bestD2) { best = a; bestD2 = d2; }
+  }
+  return best;
+}
+
 cv.addEventListener('click', (e) => {
   // Sidebar clicks: + button or roster row toggle.
-  if (e.clientX >= SIDEBAR_W) return;
-  if (inAddButton(e.clientX, e.clientY)) {
-    openSpawnDialog();
+  if (e.clientX < SIDEBAR_W) {
+    if (inAddButton(e.clientX, e.clientY)) {
+      openSpawnDialog();
+      return;
+    }
+    const hit = rosterHitAt(e.clientX, e.clientY);
+    if (hit && hit.agent && hit.agent.hqOwned && window.HQTerm) {
+      window.HQTerm.toggle(hit.agent.sessionId);
+    }
     return;
   }
-  const hit = rosterHitAt(e.clientX, e.clientY);
-  if (hit && hit.agent && hit.agent.hqOwned && window.HQTerm) {
-    window.HQTerm.toggle(hit.agent.sessionId);
+  // Office clicks: clicking a character opens/focuses their terminal.
+  if (_didPan) return;
+  const agent = officeAgentAt(e.clientX, e.clientY);
+  if (agent && window.HQTerm) {
+    window.HQTerm.toggle(agent.sessionId);
   }
 });
 
-// Pointer cursor over clickable sidebar zones (+ button, HQ-owned rows).
+// Pointer cursor over clickable sidebar zones (+ button, HQ-owned rows) and office agents.
 cv.addEventListener('mousemove', (e) => {
   if (_drag) return; // panning the office, leave cursor alone
-  if (e.clientX >= SIDEBAR_W) { cv.style.cursor = ''; return; }
-  if (inAddButton(e.clientX, e.clientY)) { cv.style.cursor = 'pointer'; return; }
-  const hit = rosterHitAt(e.clientX, e.clientY);
-  cv.style.cursor = (hit && hit.agent && hit.agent.hqOwned) ? 'pointer' : '';
+  if (e.clientX < SIDEBAR_W) {
+    if (inAddButton(e.clientX, e.clientY)) {
+      cv.style.cursor = 'pointer'; return;
+    }
+    const hit = rosterHitAt(e.clientX, e.clientY);
+    cv.style.cursor = (hit && hit.agent && hit.agent.hqOwned) ? 'pointer' : '';
+    return;
+  }
+  cv.style.cursor = officeAgentAt(e.clientX, e.clientY) ? 'pointer' : '';
 });
 
 // =====================================================================
@@ -1318,8 +1363,26 @@ const dlgGo        = document.getElementById('spawn-go');
 const dlgX         = document.getElementById('spawn-cancel');
 const dlgRecents   = document.getElementById('spawn-recents');
 const dlgRecentsLb = document.getElementById('spawn-recents-label');
+const dlgSuggest   = document.getElementById('spawn-suggest');
+const dlgBypass    = document.getElementById('spawn-bypass');
 const RECENTS_KEY  = 'claudeHqRecentCwds';
 const RECENTS_MAX  = 8;
+
+const TauriInvoke = (window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke) || null;
+let homeDirCached = null;
+async function getHomeDir() {
+  if (homeDirCached) return homeDirCached;
+  if (window.__TAURI__ && window.__TAURI__.path) {
+    try { homeDirCached = (await window.__TAURI__.path.homeDir()).replace(/\/+$/, ''); } catch {}
+  }
+  return homeDirCached || '';
+}
+function expandHome(p, home) {
+  if (!p || !home) return p;
+  if (p === '~') return home;
+  if (p.startsWith('~/')) return home + p.slice(1);
+  return p;
+}
 
 function loadRecents() {
   try {
@@ -1393,21 +1456,118 @@ async function openSpawnDialog() {
   if (!dlg) return;
   dlgErr.textContent = '';
   dlgCwd.value = await defaultCwd();
+  if (dlgBypass) dlgBypass.checked = false;
   renderRecents();
+  hideSuggest();
   dlg.style.display = 'flex';
   setTimeout(() => { dlgCwd.focus(); dlgCwd.select(); }, 0);
 }
 function closeSpawnDialog() {
   if (dlg) dlg.style.display = 'none';
+  hideSuggest();
+}
+
+// ----- Path autocomplete -----
+
+let suggestItems = [];     // array of full paths (strings)
+let suggestParent = '';    // resolved parent dir used for the current items
+let suggestActive = -1;    // highlighted index, -1 if none
+let suggestSeq = 0;        // monotonically increasing token; latest wins
+
+function hideSuggest() {
+  if (!dlgSuggest) return;
+  dlgSuggest.style.display = 'none';
+  dlgSuggest.innerHTML = '';
+  suggestItems = [];
+  suggestActive = -1;
+}
+
+function renderSuggest() {
+  if (!dlgSuggest) return;
+  dlgSuggest.innerHTML = '';
+  if (suggestItems.length === 0) { dlgSuggest.style.display = 'none'; return; }
+  suggestItems.forEach((full, idx) => {
+    const leaf = full.split('/').filter(Boolean).pop() || full;
+    const row = document.createElement('div');
+    row.className = 'item' + (idx === suggestActive ? ' active' : '');
+    row.textContent = leaf + '/';
+    row.title = full;
+    row.addEventListener('mousedown', (e) => {
+      // mousedown (not click) so the input doesn't blur first and hide us.
+      e.preventDefault();
+      acceptSuggest(idx);
+    });
+    dlgSuggest.appendChild(row);
+  });
+  dlgSuggest.style.display = 'block';
+  // Keep the active row visible.
+  const active = dlgSuggest.children[suggestActive];
+  if (active && active.scrollIntoView) active.scrollIntoView({ block: 'nearest' });
+}
+
+function splitForSuggest(value) {
+  // Need at least one slash to know the parent.
+  const i = value.lastIndexOf('/');
+  if (i < 0) return null;
+  const parent = i === 0 ? '/' : value.slice(0, i);
+  const prefix = value.slice(i + 1);
+  return { parent, prefix };
+}
+
+async function updateSuggestions() {
+  if (!TauriInvoke || !dlgSuggest) return;
+  const raw = dlgCwd.value;
+  const split = splitForSuggest(raw);
+  if (!split) { hideSuggest(); return; }
+  const home = await getHomeDir();
+  const parentResolved = expandHome(split.parent, home);
+  const prefix = split.prefix;
+  const myTok = ++suggestSeq;
+  let names = [];
+  try {
+    names = await TauriInvoke('list_dir', {
+      path: parentResolved,
+      includeHidden: prefix.startsWith('.'),
+    });
+  } catch {
+    if (myTok !== suggestSeq) return;
+    hideSuggest();
+    return;
+  }
+  if (myTok !== suggestSeq) return;
+  const lower = prefix.toLowerCase();
+  const matches = names
+    .filter(n => !lower || n.toLowerCase().startsWith(lower))
+    .slice(0, 40)
+    .map(n => (parentResolved === '/' ? '/' + n : parentResolved + '/' + n));
+  suggestItems = matches;
+  suggestParent = parentResolved;
+  suggestActive = matches.length > 0 ? 0 : -1;
+  renderSuggest();
+}
+
+function acceptSuggest(idx) {
+  if (idx < 0 || idx >= suggestItems.length) return;
+  // Preserve the user's `~` prefix if they typed one — replace only the leaf.
+  const raw = dlgCwd.value;
+  const i = raw.lastIndexOf('/');
+  const userParent = i < 0 ? '' : (i === 0 ? '/' : raw.slice(0, i));
+  const picked = suggestItems[idx];
+  const leaf = picked.split('/').filter(Boolean).pop() || '';
+  const joined = userParent === '/' ? '/' + leaf : (userParent + '/' + leaf);
+  dlgCwd.value = joined + '/';
+  // Re-trigger to show children of the freshly-picked dir.
+  updateSuggestions();
 }
 
 async function submitSpawn() {
   const cwd = dlgCwd.value.trim();
+  const bypassPermissions = !!(dlgBypass && dlgBypass.checked);
   dlgErr.textContent = '';
   dlgGo.disabled = true;
   try {
     if (!window.HQTerm) throw new Error('terminal module not loaded');
-    const sid = await window.HQTerm.spawn({ cwd: cwd || null });
+    const sid = await window.HQTerm.spawn({ cwd: cwd || null, bypassPermissions });
     if (cwd) pushRecent(cwd);
     closeSpawnDialog();
   } catch (e) {
@@ -1420,6 +1580,44 @@ async function submitSpawn() {
 if (dlg) {
   dlgGo.addEventListener('click', submitSpawn);
   dlgX .addEventListener('click', closeSpawnDialog);
+
+  // Debounced suggestions as the user types.
+  let suggestTimer = null;
+  dlgCwd.addEventListener('input', () => {
+    if (suggestTimer) clearTimeout(suggestTimer);
+    suggestTimer = setTimeout(updateSuggestions, 80);
+  });
+  dlgCwd.addEventListener('focus', updateSuggestions);
+  dlgCwd.addEventListener('blur', () => {
+    // Delay so a mousedown on a suggestion still registers.
+    setTimeout(hideSuggest, 120);
+  });
+
+  dlgCwd.addEventListener('keydown', (e) => {
+    const open = dlgSuggest && dlgSuggest.style.display !== 'none' && suggestItems.length > 0;
+    if (e.key === 'ArrowDown' && open) {
+      e.preventDefault();
+      suggestActive = (suggestActive + 1) % suggestItems.length;
+      renderSuggest();
+    } else if (e.key === 'ArrowUp' && open) {
+      e.preventDefault();
+      suggestActive = (suggestActive - 1 + suggestItems.length) % suggestItems.length;
+      renderSuggest();
+    } else if (e.key === 'Tab' && open) {
+      e.preventDefault();
+      acceptSuggest(suggestActive < 0 ? 0 : suggestActive);
+    } else if (e.key === 'Enter' && open && suggestActive >= 0) {
+      // Enter on a highlighted suggestion: accept it instead of submitting.
+      e.preventDefault();
+      e.stopPropagation();
+      acceptSuggest(suggestActive);
+    } else if (e.key === 'Escape' && open) {
+      e.preventDefault();
+      e.stopPropagation();
+      hideSuggest();
+    }
+  });
+
   dlg.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') closeSpawnDialog();
     else if (e.key === 'Enter') submitSpawn();

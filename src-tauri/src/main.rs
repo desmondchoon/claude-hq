@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod git;
 mod install;
 mod pty;
 mod ws;
@@ -39,6 +40,8 @@ fn main() {
             pty::pty_write,
             pty::pty_resize,
             pty::pty_kill,
+            pty::list_dir,
+            git::git_exec,
         ])
         .setup(move |app| {
             // First launch from a freshly-installed .app: wire up Claude Code

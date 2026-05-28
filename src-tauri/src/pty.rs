@@ -131,7 +131,7 @@ fn common_claude_dirs() -> Vec<std::path::PathBuf> {
 
 /// Build a merged, deduplicated PATH: process PATH, then login-shell PATH,
 /// then common install locations. Keeps the first occurrence of each dir.
-fn expanded_path() -> std::ffi::OsString {
+pub fn expanded_path() -> std::ffi::OsString {
     let mut result: Vec<std::path::PathBuf> = Vec::new();
     let mut seen = std::collections::HashSet::new();
 
@@ -383,4 +383,27 @@ pub fn pty_kill(state: State<'_, PtyState>, session_id: String) -> Result<(), St
     let mut killer = session.killer.lock().unwrap();
     let _ = killer.kill();
     Ok(())
+}
+
+/// List immediate subdirectory names of `path`. Powers the spawn dialog's
+/// path autocomplete. Returns just basenames so the frontend can compose the
+/// full path itself. Hidden entries (leading dot) are omitted unless
+/// `include_hidden` is set — the frontend toggles this on when the user is
+/// typing a leaf that starts with `.`.
+#[tauri::command]
+pub fn list_dir(path: String, include_hidden: Option<bool>) -> Result<Vec<String>, String> {
+    let p = Path::new(&path);
+    if !p.is_dir() {
+        return Err(format!("not a directory: {path}"));
+    }
+    let show_hidden = include_hidden.unwrap_or(false);
+    let mut out: Vec<String> = std::fs::read_dir(p)
+        .map_err(|e| format!("read_dir: {e}"))?
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+        .filter_map(|e| e.file_name().into_string().ok())
+        .filter(|name| show_hidden || !name.starts_with('.'))
+        .collect();
+    out.sort_by_key(|s| s.to_lowercase());
+    Ok(out)
 }
